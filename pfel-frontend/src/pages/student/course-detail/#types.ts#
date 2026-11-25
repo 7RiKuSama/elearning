@@ -1,0 +1,22 @@
+// File: src/pages/student/course-detail/types.ts
+import type { Ressource } from '../../../types';
+
+export interface StudentSubmissionInfo {
+  id_soumission: number;
+  id_evaluation: number;
+  fichier_soumis?: string;
+  note: number | null;
+  commentaires: string;
+  date_soumission: string;
+}
+
+export interface ChapterSection {
+  key: string;
+  orderLabel?: string;
+  title: string;
+  description?: string;
+  isUnassigned?: boolean;
+  items: Ressource[];
+}
+
+export type CourseSectionTab = 'contenu' | 'evaluations' | 'forum';

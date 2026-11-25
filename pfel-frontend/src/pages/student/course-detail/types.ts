@@ -1,0 +1,1 @@
+export type CourseSectionTab = 'contenu' | 'evaluations' | 'forum';

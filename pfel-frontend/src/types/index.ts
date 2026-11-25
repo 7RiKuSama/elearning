@@ -1,6 +1,6 @@
 // File: src/types/index.ts
 
-export type Role = 'etudiant' | 'enseignant' | 'admin';
+export type Role = 'ETUDIANT' | 'ENSEIGNANT' | 'ADMIN';
 
 export interface Utilisateur {
   id_user: string;
@@ -8,8 +8,8 @@ export interface Utilisateur {
   prenom: string;
   email: string;
   role: Role;
-  statut_actif: boolean;
   date_inscription: string;
+  est_actif: boolean;
 }
 
 export interface Categorie {
@@ -17,6 +17,8 @@ export interface Categorie {
   nom: string;
   description: string;
 }
+
+export type DifficultyLevel = 'Beginner' | 'Intermediate' | 'Advanced';
 
 export interface Cours {
   id_cours: number;
@@ -26,6 +28,31 @@ export interface Cours {
   date_creation: string;
   id_categorie: number;
   id_enseignant: string;
+  cover_url?: string;
+  estimated_duration?: string;
+  difficulty_level?: DifficultyLevel | string;
+  prerequisites?: string;
+}
+
+export interface Module {
+  id_module: number;
+  id_cours: number;
+  titre: string;
+  description: string;
+  ordre_affichage: number;
+  date_creation: string;
+}
+
+export interface Ressource {
+  id_ressource: number;
+  nom_fichier: string;
+  chemin_fichier: string;
+  type_fichier: string;
+  taille_fichier: number;
+  date_upload: string;
+  id_cours: number;
+  id_uploader: string;
+  id_module?: number | null;
 }
 
 export interface Inscription {
@@ -33,17 +60,6 @@ export interface Inscription {
   id_cours: number;
   date_inscription: string;
   progression_pourcentage: number;
-}
-
-export interface Ressource {
-  id_ressource: number;
-  id_cours: number;
-  nom_fichier: string;
-  type_fichier: string; // ex: 'pdf', 'video', 'image', 'text'
-  chemin_fichier: string;
-  taille_fichier: number;
-  date_upload: string;
-  id_uploader: string;
 }
 
 export interface Evaluation {
@@ -54,6 +70,8 @@ export interface Evaluation {
   bareme: number;
   date_ouverture: string;
   date_cloture: string;
+  nom_fichier?: string;
+  chemin_fichier?: string;
 }
 
 export interface Soumission {
@@ -69,13 +87,7 @@ export interface Soumission {
 export interface MessageForum {
   id_message: number;
   contenu: string;
-  date_publication: string;
-  id_auteur: string;
+  date_post: string;
   id_cours: number;
-}
-
-export interface PlatformStats {
-  active_users: number;
-  total_courses: number;
-  total_submissions: number;
+  id_auteur: string;
 }

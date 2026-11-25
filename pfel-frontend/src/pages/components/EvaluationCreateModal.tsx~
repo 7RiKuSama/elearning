@@ -1,0 +1,182 @@
+import React, { useState } from 'react';
+import { createEvaluation, uploadFileToServer } from '../../api/services';
+import type { Cours } from '../../types';
+
+interface EvaluationCreateModalProps {
+  course: Cours;
+  onClose: () => void;
+  onCreated: () => void;
+}
+
+export default function EvaluationCreateModal({ course, onClose, onCreated }: EvaluationCreateModalProps) {
+  const [evalTitle, setEvalTitle] = useState('');
+  const [evalInstructions, setEvalInstructions] = useState('');
+  const [evalBareme, setEvalBareme] = useState(20);
+  const [evalOpen, setEvalOpen] = useState('');
+  const [evalClose, setEvalClose] = useState('');
+  const [evalNomFichier, setEvalNomFichier] = useState('');
+  const [evalFile, setEvalFile] = useState<File | null>(null);
+  const [uploading, setUploading] = useState(false);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setUploading(true);
+    try {
+      let nomFichier = '';
+      let cheminFichier = '';
+
+      if (evalFile) {
+        const uploaded = await uploadFileToServer(evalFile);
+        nomFichier = evalNomFichier.trim() || uploaded.nom_fichier;
+        cheminFichier = uploaded.chemin_fichier;
+      }
+
+      await createEvaluation(course.id_cours, {
+        titre: evalTitle,
+        instructions: evalInstructions,
+        bareme: Number(evalBareme),
+        date_ouverture: evalOpen ? new Date(evalOpen).toISOString() : new Date().toISOString(),
+        date_cloture: evalClose ? new Date(evalClose).toISOString() : new Date().toISOString(),
+        nom_fichier: nomFichier,
+        chemin_fichier: cheminFichier,
+      });
+
+      alert('Évaluation créée avec succès !');
+      onCreated();
+      onClose();
+    } catch (err) {
+      console.error(err);
+      alert("Erreur lors de la création de l'évaluation.");
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+      <div className="bg-white rounded-3xl max-w-lg w-full p-7 shadow-2xl space-y-6">
+        <div className="flex justify-between items-center border-b border-gray-100 pb-4">
+          <h3 className="text-lg font-extrabold text-gray-900">Créer une évaluation</h3>
+          <button
+            type="button"
+            onClick={onClose}
+            className="text-gray-400 hover:text-gray-600 font-bold cursor-pointer"
+          >
+            ✕
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label className="block text-xs font-bold uppercase tracking-wider text-gray-600 mb-1">
+              Titre de l'évaluation
+            </label>
+            <input
+              type="text"
+              value={evalTitle}
+              onChange={(e) => setEvalTitle(e.target.value)}
+              placeholder="ex: Projet Final - API Go"
+              required
+              className="w-full px-4 py-2.5 bg-gray-50 border rounded-xl text-sm"
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-bold uppercase tracking-wider text-gray-600 mb-1">
+              Instructions détaillées
+            </label>
+            <textarea
+              value={evalInstructions}
+              onChange={(e) => setEvalInstructions(e.target.value)}
+              placeholder="Consignes de l'évaluation..."
+              required
+              rows={3}
+              className="w-full px-4 py-2.5 bg-gray-50 border rounded-xl text-sm"
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-bold uppercase tracking-wider text-gray-600 mb-1">
+              Barème (ex: 20)
+            </label>
+            <input
+              type="number"
+              value={evalBareme}
+              onChange={(e) => setEvalBareme(Number(e.target.value))}
+              required
+              className="w-full px-4 py-2.5 bg-gray-50 border rounded-xl text-sm"
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-bold uppercase tracking-wider text-gray-600 mb-1">
+                Date d'ouverture
+              </label>
+              <input
+                type="date"
+                value={evalOpen}
+                onChange={(e) => setEvalOpen(e.target.value)}
+                required
+                className="w-full px-4 py-2.5 bg-gray-50 border rounded-xl text-sm"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-bold uppercase tracking-wider text-gray-600 mb-1">
+                Date de clôture
+              </label>
+              <input
+                type="date"
+                value={evalClose}
+                onChange={(e) => setEvalClose(e.target.value)}
+                required
+                className="w-full px-4 py-2.5 bg-gray-50 border rounded-xl text-sm"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-xs font-bold uppercase tracking-wider text-gray-600 mb-1">
+              Nom personnalisé du fichier joint (optionnel)
+            </label>
+            <input
+              type="text"
+              value={evalNomFichier}
+              onChange={(e) => setEvalNomFichier(e.target.value)}
+              placeholder="ex: Enonce_TP1.pdf"
+              className="w-full px-4 py-2.5 bg-gray-50 border rounded-xl text-sm"
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-bold uppercase tracking-wider text-gray-600 mb-1">
+              Fichier du sujet (optionnel)
+            </label>
+            <input
+              type="file"
+              onChange={(e) => setEvalFile(e.target.files ? e.target.files[0] : null)}
+              className="w-full px-4 py-2 bg-gray-50 border rounded-xl text-sm file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-xs file:font-bold file:bg-violet-50 file:text-violet-700 hover:file:bg-violet-100 cursor-pointer"
+            />
+          </div>
+
+          <div className="flex space-x-3 pt-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-700 py-2.5 rounded-xl text-sm font-bold cursor-pointer"
+            >
+              Annuler
+            </button>
+            <button
+              type="submit"
+              disabled={uploading}
+              className="flex-1 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white py-2.5 rounded-xl text-sm font-bold shadow-sm cursor-pointer"
+            >
+              {uploading ? 'Création...' : 'Créer'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}

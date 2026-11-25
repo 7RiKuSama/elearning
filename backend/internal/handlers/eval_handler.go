@@ -2,7 +2,7 @@
 package handlers
 
 import (
-	"log"
+	"database/sql"
 	"net/http"
 	"strconv"
 	"time"
@@ -15,153 +15,234 @@ import (
 )
 
 type EvalHandler struct {
-	EvalRepo *repository.EvaluationRepository
+	EvalRepo  *repository.EvaluationRepository
+	NotifRepo *repository.NotificationRepository
+	DB        *sql.DB
 }
 
-func (h *EvalHandler) CreateEvaluation(c *gin.Context) {
-	courseIDStr := c.Param("id")
-	courseID, err := strconv.Atoi(courseIDStr)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid course ID"})
-		return
-	}
-
-	var eval models.Evaluation
-	if err := c.ShouldBindJSON(&eval); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-
-	eval.IDCours = courseID
-
-	if err := h.EvalRepo.CreateEvaluation(c.Request.Context(), &eval); err != nil {
-		log.Printf("Error creating evaluation: %v\n", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create evaluation: " + err.Error()})
-		return
-	}
-
-	c.JSON(http.StatusCreated, eval)
+type createEvaluationRequest struct {
+	Titre          string   `json:"titre" binding:"required"`
+	Instructions   string   `json:"instructions"`
+	Bareme         float64  `json:"bareme"`
+	TypeEvaluation string   `json:"type_evaluation"`
+	PassingScore   *float64 `json:"passing_score"`
+	DateOuverture  string   `json:"date_ouverture"`
+	DateCloture    string   `json:"date_cloture"`
+	NomFichier     string   `json:"nom_fichier"`
+	CheminFichier  string   `json:"chemin_fichier"`
 }
 
-func (h *EvalHandler) SubmitWork(c *gin.Context) {
-	evalIDStr := c.Param("id")
-	evalID, err := strconv.Atoi(evalIDStr)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid evaluation ID"})
-		return
+type submitWorkRequest struct {
+	FichierSoumis string `json:"fichier_soumis" binding:"required"`
+}
+
+type gradeSubmissionRequest struct {
+	Note         float64 `json:"note"`
+	Commentaires string  `json:"commentaires"`
+}
+
+func parseEvalDate(raw string, fallback time.Time) time.Time {
+	if raw == "" {
+		return fallback
 	}
-
-	// Supporte "user_id" et "userID" selon votre middleware
-	userID, exists := c.Get("user_id")
-	if !exists {
-		userID, exists = c.Get("userID")
-		if !exists {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "User ID not found in context"})
-			return
-		}
+	if t, err := time.Parse(time.RFC3339, raw); err == nil {
+		return t
 	}
-
-	uuidUserID, err := uuid.Parse(userID.(string))
-	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid user ID format"})
-		return
+	if t, err := time.Parse("2006-01-02", raw); err == nil {
+		return t
 	}
-
-	var submission models.Soumission
-	if err := c.ShouldBindJSON(&submission); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-
-	submission.IDEvaluation = evalID
-	submission.IDEtudiant = uuidUserID
-	submission.DateEnvoi = time.Now()
-
-	if err := h.EvalRepo.SubmitWork(c.Request.Context(), &submission); err != nil {
-		log.Printf("Error submitting work: %v\n", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to submit work: " + err.Error()})
-		return
-	}
-
-	c.JSON(http.StatusCreated, submission)
+	return fallback
 }
 
 func (h *EvalHandler) ListEvaluations(c *gin.Context) {
-	courseIDStr := c.Param("id")
-	courseID, err := strconv.Atoi(courseIDStr)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid course ID"})
+	courseID, err := strconv.Atoi(c.Param("id"))
+	if err != nil || courseID <= 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "ID de cours invalide"})
 		return
 	}
 
-	evals, err := h.EvalRepo.GetEvaluationsByCourse(c.Request.Context(), courseID)
+	list, err := h.EvalRepo.ListByCourse(courseID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve evaluations"})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Erreur lors de la récupération des évaluations"})
 		return
 	}
 
-	c.JSON(http.StatusOK, evals)
+	c.JSON(http.StatusOK, list)
 }
 
-func (h *EvalHandler) GetStudentGrades(c *gin.Context) {
-	userID, exists := c.Get("user_id")
-	if !exists {
-		userID, exists = c.Get("userID")
-		if !exists {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
-			return
-		}
-	}
-
-	grades, err := h.EvalRepo.GetStudentGrades(c.Request.Context(), userID.(string))
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve student grades"})
+func (h *EvalHandler) CreateEvaluation(c *gin.Context) {
+	courseID, err := strconv.Atoi(c.Param("id"))
+	if err != nil || courseID <= 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "ID de cours invalide"})
 		return
 	}
 
-	c.JSON(http.StatusOK, grades)
-}
-
-func (h *EvalHandler) ListSubmissions(c *gin.Context) {
-	evalIDStr := c.Param("id")
-	evalID, err := strconv.Atoi(evalIDStr)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid evaluation ID"})
-		return
-	}
-
-	subs, err := h.EvalRepo.GetSubmissionsByEvaluation(c.Request.Context(), evalID)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve submissions"})
-		return
-	}
-
-	c.JSON(http.StatusOK, subs)
-}
-
-func (h *EvalHandler) GradeSubmission(c *gin.Context) {
-	subIDStr := c.Param("id")
-	subID, err := strconv.Atoi(subIDStr)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid submission ID"})
-		return
-	}
-
-	var req struct {
-		Note         float64 `json:"note" binding:"required"`
-		Commentaires string  `json:"commentaires"`
-	}
-
+	var req createEvaluationRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
-	err = h.EvalRepo.GradeSubmission(c.Request.Context(), subID, req.Note, req.Commentaires)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to grade submission"})
+	evalType := req.TypeEvaluation
+	if evalType != "quiz" && evalType != "file" {
+		evalType = "file"
+	}
+
+	bareme := req.Bareme
+	if bareme <= 0 {
+		bareme = 20
+	}
+
+	now := time.Now()
+	ev := &models.Evaluation{
+		IDCours:        courseID,
+		Titre:          req.Titre,
+		Instructions:   req.Instructions,
+		Bareme:         bareme,
+		TypeEvaluation: evalType,
+		PassingScore:   req.PassingScore,
+		DateOuverture:  parseEvalDate(req.DateOuverture, now),
+		DateCloture:    parseEvalDate(req.DateCloture, now.AddDate(0, 0, 7)),
+		NomFichier:     req.NomFichier,
+		CheminFichier:  req.CheminFichier,
+	}
+
+	if err := h.EvalRepo.Create(ev); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Erreur lors de la création de l'évaluation"})
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"message": "Grade recorded successfully"})
+	if h.NotifRepo != nil {
+		_ = h.NotifRepo.NotifyEnrolledStudents(
+			courseID,
+			"evaluation_published",
+			"Nouvelle évaluation publiée",
+			"Une évaluation a été ajoutée : "+ev.Titre,
+			"/cours/"+strconv.Itoa(courseID),
+		)
+	}
+
+	c.JSON(http.StatusCreated, ev)
+}
+
+func (h *EvalHandler) SubmitWork(c *gin.Context) {
+	evalID, err := strconv.Atoi(c.Param("id"))
+	if err != nil || evalID <= 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "ID d'évaluation invalide"})
+		return
+	}
+
+	studentID := extractUserID(c)
+	if studentID == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Utilisateur non authentifié"})
+		return
+	}
+
+	var req submitWorkRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	sub, err := h.EvalRepo.UpsertSubmission(evalID, studentID, req.FichierSoumis)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Erreur lors de la soumission"})
+		return
+	}
+
+	if h.NotifRepo != nil && h.DB != nil {
+		var courseID int
+		if err := h.DB.QueryRow(`SELECT id_cours FROM evaluations WHERE id_evaluation = $1`, evalID).Scan(&courseID); err == nil && courseID > 0 {
+			_ = h.NotifRepo.NotifyCourseTeacher(
+				courseID,
+				"submission_received",
+				"Nouveau rendu déposé",
+				"Un étudiant a soumis son travail.",
+				"/enseignant/dashboard",
+			)
+		}
+	}
+
+	c.JSON(http.StatusOK, sub)
+}
+
+func (h *EvalHandler) ListSubmissions(c *gin.Context) {
+	evalID, err := strconv.Atoi(c.Param("id"))
+	if err != nil || evalID <= 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "ID d'évaluation invalide"})
+		return
+	}
+
+	list, err := h.EvalRepo.ListSubmissionsByEvaluation(evalID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Erreur lors de la récupération des soumissions"})
+		return
+	}
+
+	c.JSON(http.StatusOK, list)
+}
+
+func (h *EvalHandler) GradeSubmission(c *gin.Context) {
+	subID, err := strconv.Atoi(c.Param("id"))
+	if err != nil || subID <= 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "ID de soumission invalide"})
+		return
+	}
+
+	var req gradeSubmissionRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	if err := h.EvalRepo.GradeSubmission(subID, req.Note, req.Commentaires); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Erreur lors de la notation"})
+		return
+	}
+
+	if h.NotifRepo != nil && h.DB != nil {
+		var studentRaw string
+		var courseID sql.NullInt64
+		err := h.DB.QueryRow(`
+			SELECT s.id_etudiant::text, e.id_cours
+			FROM soumissions s
+			JOIN evaluations e ON e.id_evaluation = s.id_evaluation
+			WHERE s.id_soumission = $1
+		`, subID).Scan(&studentRaw, &courseID)
+		if err == nil {
+			if studentUUID, parseErr := uuid.Parse(studentRaw); parseErr == nil {
+				var courseIDPtr *int
+				if courseID.Valid {
+					v := int(courseID.Int64)
+					courseIDPtr = &v
+				}
+				_ = h.NotifRepo.Create(
+					studentUUID,
+					courseIDPtr,
+					"evaluation_graded",
+					"Évaluation notée",
+					"Votre rendu a reçu une note.",
+					"/mes-notes",
+				)
+			}
+		}
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Note enregistrée"})
+}
+
+func (h *EvalHandler) GetStudentGrades(c *gin.Context) {
+	studentID := extractUserID(c)
+	if studentID == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Utilisateur non authentifié"})
+		return
+	}
+
+	grades, err := h.EvalRepo.GetStudentGrades(studentID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Erreur lors de la récupération des notes"})
+		return
+	}
+
+	c.JSON(http.StatusOK, grades)
 }

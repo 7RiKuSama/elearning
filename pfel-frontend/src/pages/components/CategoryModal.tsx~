@@ -1,0 +1,93 @@
+import React, { useState } from 'react';
+import { createCategory } from '../../api/services';
+
+interface CategoryModalProps {
+  onClose: () => void;
+  onCreated: () => void;
+}
+
+export default function CategoryModal({ onClose, onCreated }: CategoryModalProps) {
+  const [catName, setCatName] = useState('');
+  const [catDesc, setCatDesc] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSubmitting(true);
+    try {
+      await createCategory({ nom: catName, description: catDesc });
+      alert('Catégorie créée avec succès !');
+      onCreated();
+      onClose();
+    } catch (err) {
+      console.error(err);
+      alert('Erreur lors de la création de la catégorie.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+      <div className="bg-white rounded-3xl max-w-md w-full p-7 shadow-2xl space-y-6">
+        <div className="flex justify-between items-center border-b border-gray-100 pb-4">
+          <h3 className="text-xl font-extrabold text-gray-900">Créer une catégorie</h3>
+          <button
+            type="button"
+            onClick={onClose}
+            className="text-gray-400 hover:text-gray-600 font-bold cursor-pointer"
+          >
+            ✕
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label className="block text-xs font-bold uppercase tracking-wider text-gray-600 mb-1">
+              Nom de la catégorie
+            </label>
+            <input
+              type="text"
+              value={catName}
+              onChange={(e) => setCatName(e.target.value)}
+              placeholder="ex: Intelligence Artificielle"
+              required
+              className="w-full px-4 py-2.5 bg-gray-50 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-bold uppercase tracking-wider text-gray-600 mb-1">
+              Description
+            </label>
+            <textarea
+              value={catDesc}
+              onChange={(e) => setCatDesc(e.target.value)}
+              placeholder="Description de la catégorie..."
+              required
+              rows={3}
+              className="w-full px-4 py-2.5 bg-gray-50 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            />
+          </div>
+
+          <div className="flex space-x-3 pt-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-700 py-2.5 rounded-xl text-sm font-bold cursor-pointer"
+            >
+              Annuler
+            </button>
+            <button
+              type="submit"
+              disabled={submitting}
+              className="flex-1 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white py-2.5 rounded-xl text-sm font-bold shadow-sm cursor-pointer"
+            >
+              {submitting ? 'Création...' : 'Créer'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}

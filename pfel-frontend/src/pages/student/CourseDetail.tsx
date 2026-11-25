@@ -1,652 +1,1185 @@
-// File: src/pages/teacher/Dashboard.tsx
-import { useNavigate } from 'react-router-dom';
-import React, { useEffect, useState } from 'react';
-import { 
-  getCatalog, 
-  getCategories, 
-  createCourse, 
-  updateCourse, 
-  uploadResource, 
-  getCourseEvaluations, 
-  createEvaluation, 
-  getEvaluationSubmissions, 
-  gradeSubmission, 
-  getCourseStudents,
-  createCategory,
-  getProfile,
-  uploadFileToServer
+// File: src/pages/student/CourseDetail.tsx
+import React, { useEffect, useRef, useState, useMemo } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
+import gsap from 'gsap';
+import {
+  getCatalog,
+  getCourseResources,
+  getCourseModules,
+  getCourseEvaluations,
+  getForumThreads,
+  submitEvaluation,
+  uploadFileToServer,
+  getStudentGrades,
+  getEvaluationQuiz,
 } from '../../api/services';
-import type { Cours, Categorie, Evaluation, Soumission, Utilisateur } from '../../types';
-import { 
-  BookOpen, 
-  PlusCircle, 
-  CheckSquare, 
-  Users, 
-  Edit, 
-  Upload, 
-  Layers 
+import type { Cours, Ressource, Evaluation, Module } from '../../types';
+import { useToast } from '../../context/ToastContext';
+import { CrawlingPythonBg } from '../../components/ui/CrawlingPythonBg';
+import { Skeleton } from '../../components/ui/Skeleton';
+import QuizPlayerModal, { type QuizQuestionItem } from '../components/QuizPlayerModal';
+import ForumSection from '../../components/ForumSection';
+import {
+  FileText,
+  CheckSquare,
+  MessageSquare,
+  ArrowLeft,
+  Upload,
+  Download,
+  PlayCircle,
+  Image as ImageIcon,
+  FileCode,
+  FolderOpen,
+  Layers,
+  Eye,
+  ChevronDown,
+  ChevronUp,
+  ExternalLink,
+  CheckCircle2,
+  Award,
+  BookOpen,
+  X,
 } from 'lucide-react';
 
-export default function TeacherDashboard() {
+const API_ORIGIN = (import.meta.env.VITE_API_URL || 'http://localhost:8080/api').replace(
+  /\/api\/?$/,
+  ''
+);
+
+const resolveFileUrl = (path?: string | null): string => {
+  if (!path) return '';
+  const trimmed = path.trim();
+  if (/^https?:\/\//i.test(trimmed)) return trimmed;
+  if (trimmed.startsWith('file://')) {
+    const clean = trimmed.replace(/^file:\/\//i, '');
+    const uploadsIdx = clean.indexOf('/uploads/');
+    if (uploadsIdx !== -1) {
+      return `${API_ORIGIN}${clean.slice(uploadsIdx)}`;
+    }
+    return '';
+  }
+  const normalized = trimmed.startsWith('/') ? trimmed : `/${trimmed}`;
+  return `${API_ORIGIN}${normalized}`;
+};
+
+const getVideoEmbedUrl = (url: string): string | null => {
+  if (!url) return null;
+  const ytMatch = url.match(
+    /(?:youtube\.com\/(?:watch\?v=|embed\/|shorts\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/
+  );
+  if (ytMatch && ytMatch[1]) {
+    return `https://www.youtube.com/embed/${ytMatch[1]}`;
+  }
+
+  const vimeoMatch = url.match(/vimeo\.com\/(?:video\/)?(\d+)/);
+  if (vimeoMatch && vimeoMatch[1]) {
+    return `https://player.vimeo.com/video/${vimeoMatch[1]}`;
+  }
+
+  return null;
+};
+
+const renderMarkdown = (md: string) => {
+  if (!md) return '';
+  let html = md.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+  html = html.replace(
+    /```([\s\S]*?)```/g,
+    '<pre class="bg-[var(--bg-subtle)] text-[var(--text-primary)] border border-[var(--border-subtle)] p-3.5 rounded-xl overflow-x-auto text-xs my-3 font-mono"><code>$1</code></pre>'
+  );
+  html = html.replace(
+    /`([^`]+)`/g,
+    '<code class="bg-[var(--accent-soft)] text-[var(--accent-text)] px-1.5 py-0.5 rounded text-xs font-mono">$1</code>'
+  );
+  html = html.replace(
+    /^### (.*$)/gim,
+    '<h3 class="text-base font-semibold text-[var(--text-primary)] mt-4 mb-1">$1</h3>'
+  );
+  html = html.replace(
+    /^## (.*$)/gim,
+    '<h2 class="text-lg font-semibold text-[var(--text-primary)] mt-5 mb-2 border-b border-[var(--border-subtle)] pb-1">$1</h2>'
+  );
+  html = html.replace(
+    /^# (.*$)/gim,
+    '<h1 class="font-editorial text-xl text-[var(--text-primary)] mt-5 mb-3">$1</h1>'
+  );
+  html = html.replace(
+    /\*\*([^*]+)\*\*/g,
+    '<strong class="font-semibold text-[var(--text-primary)]">$1</strong>'
+  );
+  html = html.replace(/\*([^*]+)\*/g, '<em class="italic">$1</em>');
+  html = html.replace(
+    /^&gt; (.*$)/gim,
+    '<blockquote class="border-l-2 border-[var(--accent)] pl-3.5 italic text-[var(--text-secondary)] my-2">$1</blockquote>'
+  );
+  html = html.replace(/^\s*[-*] (.*$)/gim, '<li class="ml-5 list-disc my-0.5">$1</li>');
+  html = html.replace(
+    /\[([^\]]+)\]\(([^)]+)\)/g,
+    '<a href="$2" target="_blank" rel="noreferrer" class="text-[var(--accent-text)] underline hover:opacity-80">$1</a>'
+  );
+  html = html.replace(/\n/g, '<br />');
+
+  return html;
+};
+
+const getSessionUser = (): { id_user?: string; role?: string } => {
+  try {
+    for (const key of ['user', 'pfel_user', 'currentUser', 'auth_user']) {
+      const raw = localStorage.getItem(key);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        const u = parsed?.user ?? parsed;
+        if (u?.id_user || u?.role) {
+          return { id_user: u.id_user || u.id, role: u.role };
+        }
+      }
+    }
+    const token = localStorage.getItem('token') || localStorage.getItem('access_token');
+    if (token && token.split('.').length === 3) {
+      const payload = JSON.parse(
+        atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'))
+      );
+      return {
+        id_user: payload.id_user || payload.user_id || payload.sub,
+        role: payload.role || payload.user_role,
+      };
+    }
+  } catch {
+    // ignore storage/token parse issues
+  }
+  return {};
+};
+
+interface StudentSubmissionInfo {
+  id_soumission: number;
+  id_evaluation: number;
+  fichier_soumis?: string;
+  note: number | null;
+  commentaires: string;
+  date_soumission: string;
+}
+
+interface ChapterSection {
+  key: string;
+  orderLabel?: string;
+  title: string;
+  description?: string;
+  isUnassigned?: boolean;
+  items: Ressource[];
+}
+
+type CourseSectionTab = 'contenu' | 'evaluations' | 'forum';
+
+export default function CourseDetail() {
+  const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState<'cours' | 'evaluations' | 'suivi'>('cours');
-    
-  const [courses, setCourses] = useState<Cours[]>([]);
-  const [categories, setCategories] = useState<Categorie[]>([]);
-  const [currentUser, setCurrentUser] = useState<Utilisateur | null>(null);
+  const sessionUser = useMemo(() => getSessionUser(), []);
+  const { success, warning, error: showError } = useToast();
+
+  const [activeSection, setActiveSection] = useState<CourseSectionTab>('contenu');
+  const [course, setCourse] = useState<Cours | null>(null);
+  const [modules, setModules] = useState<Module[]>([]);
+  const [resources, setResources] = useState<Ressource[]>([]);
+  const [evaluations, setEvaluations] = useState<Evaluation[]>([]);
+  const [mySubmissions, setMySubmissions] = useState<Record<number, StudentSubmissionInfo>>({});
+  const [forumThreadsCount, setForumThreadsCount] = useState<number>(0);
   const [loading, setLoading] = useState(true);
 
-  // Modals / Form states
-  const [showCreateCourse, setShowCreateCourse] = useState(false);
-  const [editCourseData, setEditCourseData] = useState<Cours | null>(null);
+  const [collapsedChapters, setCollapsedChapters] = useState<Record<string, boolean>>({});
+  const [expandedResId, setExpandedResId] = useState<number | null>(null);
+  const [textContents, setTextContents] = useState<Record<number, string>>({});
+  const [loadingTextId, setLoadingTextId] = useState<number | null>(null);
 
-  // New Category Form states
-  const [showCreateCategory, setShowCreateCategory] = useState(false);
-  const [catName, setCatName] = useState('');
-  const [catDesc, setCatDesc] = useState('');
-    
-  // New Course Form
-  const [newTitle, setNewTitle] = useState('');
-  const [newDesc, setNewDesc] = useState('');
-  const [newCat, setNewCat] = useState<number>(1);
-  const [newPub, setNewPub] = useState(true);
+  const [selectedEval, setSelectedEval] = useState<Evaluation | null>(null);
+  const [submissionFile, setSubmissionFile] = useState<File | null>(null);
+  const [uploading, setUploading] = useState(false);
 
-  // Resource Upload Modal (avec vrai fichier)
-  const [selectedCourseForRes, setSelectedCourseForRes] = useState<Cours | null>(null);
-  const [resName, setResName] = useState('');
-  const [resFile, setResFile] = useState<File | null>(null);
-  const [resType, setResType] = useState('pdf');
+  const [activeQuizEval, setActiveQuizEval] = useState<Evaluation | null>(null);
+  const [activeQuizQuestions, setActiveQuizQuestions] = useState<QuizQuestionItem[]>([]);
+  const [loadingQuiz, setLoadingQuiz] = useState(false);
 
-  // Evaluation Creation Modal (avec vrai fichier)
-  const [selectedCourseForEval, setSelectedCourseForEval] = useState<Cours | null>(null);
-  const [evalTitle, setEvalTitle] = useState('');
-  const [evalInstructions, setEvalInstructions] = useState('');
-  const [evalBareme, setEvalBareme] = useState(20);
-  const [evalOpen, setEvalOpen] = useState('');
-  const [evalClose, setEvalClose] = useState('');
-  const [evalNomFichier, setEvalNomFichier] = useState('');
-  const [evalFile, setEvalFile] = useState<File | null>(null);
+  const pageRef = useRef<HTMLDivElement | null>(null);
+  const courseId = Number(id);
 
-  // Grading Modal / Drawer
-  const [selectedEvalForGrading, setSelectedEvalForGrading] = useState<Evaluation | null>(null);
-  const [evaluationsList, setEvaluationsList] = useState<Evaluation[]>([]);
-  const [submissionsList, setSubmissionsList] = useState<Soumission[]>([]);
-  const [gradingSubId, setGradingSubId] = useState<number | null>(null);
-  const [gradeValue, setGradeValue] = useState<number>(0);
-  const [gradeComment, setGradeComment] = useState('');
-
-  // Class Tracking
-  const [selectedCourseForTracking, setSelectedCourseForTracking] = useState<Cours | null>(null);
-  const [studentsList, setStudentsList] = useState<any[]>([]);
-
-  const fetchData = async () => {
+  const fetchCourseData = async () => {
     try {
-      const [catData, courseData, profileData] = await Promise.all([
-        getCategories(),
-        getCatalog(),
-        getProfile()
-      ]);
-      setCategories(catData || []);
-      setCurrentUser(profileData);
-
-      const myCourses = (courseData || []).filter(
-        (course) => course.id_enseignant === profileData.id_user
-      );
-      setCourses(myCourses);
+      const catalog = await getCatalog();
+      const currentCourse = (catalog || []).find((c: Cours) => Number(c.id_cours) === courseId);
+      setCourse(currentCourse || null);
     } catch (err) {
-      console.error('Erreur de chargement:', err);
-    } finally {
-      setLoading(false);
+      console.error('Erreur lors de la récupération du cours:', err);
     }
+
+    try {
+      const modsData = await getCourseModules(courseId);
+      setModules(Array.isArray(modsData) ? modsData : []);
+    } catch {
+      setModules([]);
+    }
+
+    try {
+      const resData = await getCourseResources(courseId);
+      setResources(Array.isArray(resData) ? resData : []);
+    } catch {
+      setResources([]);
+    }
+
+    try {
+      const evalData = await getCourseEvaluations(courseId);
+      setEvaluations(Array.isArray(evalData) ? evalData : []);
+    } catch {
+      setEvaluations([]);
+    }
+
+    try {
+      const gradesData = await getStudentGrades();
+      const subMap: Record<number, StudentSubmissionInfo> = {};
+      (Array.isArray(gradesData) ? gradesData : []).forEach((item: StudentSubmissionInfo) => {
+        subMap[item.id_evaluation] = item;
+      });
+      setMySubmissions(subMap);
+    } catch {
+      setMySubmissions({});
+    }
+
+    try {
+      const forumData = await getForumThreads(courseId);
+      setForumThreadsCount(Array.isArray(forumData) ? forumData.length : 0);
+    } catch {
+      setForumThreadsCount(0);
+    }
+
+    setLoading(false);
   };
 
   useEffect(() => {
-    fetchData();
-  }, []);
-
-  const handleCreateCategorySubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    try {
-      await createCategory({ nom: catName, description: catDesc });
-      alert('Catégorie créée avec succès !');
-      setShowCreateCategory(false);
-      setCatName('');
-      setCatDesc('');
-      fetchData();
-    } catch (err) {
-      console.error(err);
-      alert("Erreur lors de la création de la catégorie.");
+    if (courseId) {
+      setLoading(true);
+      fetchCourseData();
     }
-  };
+  }, [courseId]);
 
-  const handleCreateCourseSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    try {
-      await createCourse({ titre: newTitle, description: newDesc, est_publie: newPub, id_categorie: Number(newCat) });
-      alert('Cours créé avec succès !');
-      setShowCreateCourse(false);
-      setNewTitle('');
-      setNewDesc('');
-      fetchData();
-    } catch (err) {
-      console.error(err);
-      alert("Erreur lors de la création du cours.");
-    }
-  };
-
-  const handleUpdateCourseSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!editCourseData) return;
-    try {
-      await updateCourse(editCourseData.id_cours, {
-        titre: editCourseData.titre,
-        description: editCourseData.description,
-        est_publie: editCourseData.est_publie,
-        id_categorie: editCourseData.id_categorie
+  useEffect(() => {
+    if (loading || !pageRef.current) return;
+    const ctx = gsap.context(() => {
+      gsap.from('.gsap-cd-anim', {
+        y: 16,
+        opacity: 0,
+        duration: 0.55,
+        stagger: 0.06,
+        ease: 'power2.out',
+        clearProps: 'transform,opacity',
       });
-      alert('Cours mis à jour avec succès !');
-      setEditCourseData(null);
-      fetchData();
-    } catch (err) {
-      console.error(err);
-      alert("Erreur lors de la mise à jour.");
-    }
-  };
+    }, pageRef);
+    return () => ctx.revert();
+  }, [loading, activeSection]);
 
-  // Upload Ressource avec fichier physique
-  const handleUploadResSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!selectedCourseForRes || !resFile) return;
-    try {
-      const uploaded = await uploadFileToServer(resFile);
-      await uploadResource(selectedCourseForRes.id_cours, {
-        nom_fichier: resName || uploaded.nom_fichier,
-        chemin_fichier: uploaded.chemin_fichier,
-        type_fichier: resType,
-        taille_fichier: uploaded.taille_fichier
-      });
-      alert('Ressource ajoutée avec succès !');
-      setSelectedCourseForRes(null);
-      setResName('');
-      setResFile(null);
-    } catch (err) {
-      console.error(err);
-      alert("Erreur lors de l'upload de la ressource.");
-    }
-  };
-
-  // Création d'évaluation avec fichier joint optionnel
-  const handleCreateEvalSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!selectedCourseForEval) return;
-    try {
-      let nomFichier = '';
-      let cheminFichier = '';
-
-      if (evalFile) {
-        const uploaded = await uploadFileToServer(evalFile);
-        nomFichier = evalNomFichier || uploaded.nom_fichier;
-        cheminFichier = uploaded.chemin_fichier;
+  const handleOpenEvaluationAction = async (ev: Evaluation) => {
+    if ((ev as any).type_evaluation === 'quiz') {
+      setLoadingQuiz(true);
+      try {
+        const qs = await getEvaluationQuiz(ev.id_evaluation);
+        if (!qs || qs.length === 0) {
+          warning('Aucune question disponible pour ce quiz pour le moment.');
+          return;
+        }
+        setActiveQuizQuestions(qs);
+        setActiveQuizEval(ev);
+      } catch (err) {
+        console.error(err);
+        showError('Impossible de charger le quiz.');
+      } finally {
+        setLoadingQuiz(false);
       }
-
-      await createEvaluation(selectedCourseForEval.id_cours, {
-        titre: evalTitle,
-        instructions: evalInstructions,
-        bareme: Number(evalBareme),
-        date_ouverture: evalOpen ? new Date(evalOpen).toISOString() : new Date().toISOString(),
-        date_cloture: evalClose ? new Date(evalClose).toISOString() : new Date().toISOString(),
-        nom_fichier: nomFichier,
-        chemin_fichier: cheminFichier
-      });
-      alert('Évaluation créée avec succès !');
-      setSelectedCourseForEval(null);
-      setEvalTitle('');
-      setEvalInstructions('');
-      setEvalNomFichier('');
-      setEvalFile(null);
-    } catch (err) {
-      console.error(err);
-      alert("Erreur lors de la création de l'évaluation.");
+      return;
     }
+
+    setSelectedEval(ev);
   };
 
-  const handleSelectCourseForEvaluations = async (course: Cours) => {
-    try {
-      const evals = await getCourseEvaluations(course.id_cours);
-      setEvaluationsList(evals || []);
-      setSelectedEvalForGrading(null);
-      setSubmissionsList([]);
-    } catch (err) {
-      console.error(err);
-    }
-  };
+  const courseProgressPercentage = useMemo(() => {
+    if (evaluations.length === 0) return 0;
 
-  const handleSelectEvalForGrading = async (evaluation: Evaluation) => {
-    setSelectedEvalForGrading(evaluation);
-    try {
-      const subs = await getEvaluationSubmissions(evaluation.id_evaluation);
-      setSubmissionsList(subs || []);
-    } catch (err) {
-      console.error(err);
-    }
-  };
-
-  const handleGradeSubmit = async (subId: number) => {
-    try {
-      await gradeSubmission(subId, gradeValue, gradeComment);
-      alert('Note enregistrée avec succès !');
-      setGradingSubId(null);
-      if (selectedEvalForGrading) {
-        const subs = await getEvaluationSubmissions(selectedEvalForGrading.id_evaluation);
-        setSubmissionsList(subs || []);
+    let totalScore = 0;
+    evaluations.forEach((ev) => {
+      const sub = mySubmissions[ev.id_evaluation];
+      if (sub) {
+        if (sub.note === null || sub.note === undefined) {
+          totalScore += 0.5;
+        } else {
+          const ratio = ev.bareme > 0 ? Math.min(Math.max(sub.note / ev.bareme, 0), 1) : 1;
+          totalScore += 0.5 + 0.5 * ratio;
+        }
       }
-    } catch (err) {
-      console.error(err);
-      alert("Erreur lors de l'enregistrement de la note.");
+    });
+
+    return Math.round((totalScore / evaluations.length) * 100);
+  }, [evaluations, mySubmissions]);
+
+  const completedEvaluationsCount = useMemo(() => {
+    return evaluations.filter((ev) => Boolean(mySubmissions[ev.id_evaluation])).length;
+  }, [evaluations, mySubmissions]);
+
+  const chapterSections = useMemo<ChapterSection[]>(() => {
+    const sortedModules = [...modules].sort(
+      (a, b) => (a.ordre_affichage ?? 0) - (b.ordre_affichage ?? 0) || a.id_module - b.id_module
+    );
+
+    const moduleIds = new Set(sortedModules.map((m) => m.id_module));
+    const sections: ChapterSection[] = sortedModules.map((mod, idx) => ({
+      key: `mod-${mod.id_module}`,
+      orderLabel: `Chapitre ${idx + 1}`,
+      title: mod.titre,
+      description: mod.description,
+      items: resources.filter((res) => res.id_module === mod.id_module),
+    }));
+
+    const unassigned = resources.filter(
+      (res) => res.id_module === null || res.id_module === undefined || !moduleIds.has(res.id_module)
+    );
+
+    if (unassigned.length > 0) {
+      sections.push({
+        key: 'unassigned',
+        title:
+          sortedModules.length > 0 ? 'Autres supports & ressources générales' : 'Supports du cours',
+        description:
+          sortedModules.length > 0
+            ? 'Documents complémentaires non rattachés à un chapitre spécifique'
+            : undefined,
+        isUnassigned: true,
+        items: unassigned,
+      });
+    }
+
+    return sections;
+  }, [modules, resources]);
+
+  const toggleChapterCollapse = (key: string) => {
+    setCollapsedChapters((prev) => ({ ...prev, [key]: !prev[key] }));
+  };
+
+  const jumpToChapter = (key: string) => {
+    setActiveSection('contenu');
+    setCollapsedChapters((prev) => ({ ...prev, [key]: false }));
+    requestAnimationFrame(() => {
+      const el = document.getElementById(`chapter-${key}`);
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    });
+  };
+
+  const handleToggleResource = async (res: Ressource) => {
+    if (expandedResId === res.id_ressource) {
+      setExpandedResId(null);
+      return;
+    }
+
+    setExpandedResId(res.id_ressource);
+
+    const isText = res.type_fichier === 'text' || /\.(md|txt|markdown)$/i.test(res.chemin_fichier);
+    if (isText && textContents[res.id_ressource] === undefined) {
+      setLoadingTextId(res.id_ressource);
+      try {
+        const response = await fetch(resolveFileUrl(res.chemin_fichier));
+        if (!response.ok) throw new Error('Impossible de charger le fichier texte');
+        const text = await response.text();
+        setTextContents((prev) => ({ ...prev, [res.id_ressource]: text }));
+      } catch (err) {
+        console.error(err);
+        setTextContents((prev) => ({
+          ...prev,
+          [res.id_ressource]:
+            "*Impossible d'afficher l'aperçu direct de ce fichier. Utilisez le bouton Télécharger.*",
+        }));
+      } finally {
+        setLoadingTextId(null);
+      }
     }
   };
 
-  const handleSelectCourseForTracking = async (course: Cours) => {
-    setSelectedCourseForTracking(course);
+  const handleSubmitWork = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedEval || !submissionFile) return;
+    setUploading(true);
     try {
-      const students = await getCourseStudents(course.id_cours);
-      setStudentsList(students || []);
+      const uploaded = await uploadFileToServer(submissionFile);
+      await submitEvaluation(selectedEval.id_evaluation, uploaded.chemin_fichier);
+
+      setMySubmissions((prev) => ({
+        ...prev,
+        [selectedEval.id_evaluation]: {
+          id_soumission: prev[selectedEval.id_evaluation]?.id_soumission || Date.now(),
+          id_evaluation: selectedEval.id_evaluation,
+          fichier_soumis: uploaded.chemin_fichier,
+          note: prev[selectedEval.id_evaluation]?.note ?? null,
+          commentaires: prev[selectedEval.id_evaluation]?.commentaires || '',
+          date_soumission: new Date().toISOString(),
+        },
+      }));
+
+      success('Votre travail a été enregistré avec succès !', 'Devoir soumis');
+      setSelectedEval(null);
+      setSubmissionFile(null);
+      fetchCourseData();
     } catch (err) {
       console.error(err);
+      showError('Erreur lors de la soumission du devoir.');
+    } finally {
+      setUploading(false);
     }
+  };
+
+  const getResourceIcon = (res: Ressource) => {
+    if (
+      res.type_fichier === 'video' ||
+      /\.(mp4|webm|ogg)$/i.test(res.chemin_fichier) ||
+      getVideoEmbedUrl(res.chemin_fichier) !== null
+    ) {
+      return <PlayCircle className="w-4 h-4 text-[var(--accent-text)]" />;
+    }
+    if (res.type_fichier === 'image' || /\.(jpg|jpeg|png|gif|webp|svg)$/i.test(res.chemin_fichier)) {
+      return <ImageIcon className="w-4 h-4 text-[var(--success-text)]" />;
+    }
+    if (res.type_fichier === 'text' || /\.(md|txt|markdown)$/i.test(res.chemin_fichier)) {
+      return <FileCode className="w-4 h-4 text-[var(--warning-text)]" />;
+    }
+    return <FileText className="w-4 h-4 text-[var(--text-secondary)]" />;
   };
 
   if (loading) {
-    return <div className="text-center mt-12 text-gray-500 font-medium">Chargement de votre espace enseignant...</div>;
+    return (
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 py-8 space-y-6">
+        <Skeleton className="h-40 w-full rounded-2xl" />
+        <Skeleton className="h-14 w-full rounded-2xl" />
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+          <div className="lg:col-span-8 space-y-4">
+            <Skeleton className="h-72 w-full rounded-2xl" />
+          </div>
+          <div className="lg:col-span-4 space-y-4">
+            <Skeleton className="h-56 w-full rounded-2xl" />
+          </div>
+        </div>
+      </div>
+    );
   }
 
+  const hasAnyCourseContent =
+    Boolean(course) ||
+    modules.length > 0 ||
+    resources.length > 0 ||
+    evaluations.length > 0 ||
+    forumThreadsCount > 0;
+
+  if (!hasAnyCourseContent) {
+    return (
+      <div className="max-w-3xl mx-auto mt-16 px-4 text-center space-y-4">
+        <div className="surface-card rounded-2xl p-8 space-y-4">
+          <p className="text-[var(--danger-text)] font-medium text-base">
+            Cours introuvable ou non publié.
+          </p>
+          <button
+            type="button"
+            onClick={() => navigate(-1)}
+            className="inline-flex items-center space-x-2 btn-accent text-xs font-medium px-4 py-2 rounded-xl cursor-pointer"
+          >
+            <ArrowLeft className="w-4 h-4" />
+            <span>Retourner en arrière</span>
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  const displayTitle = course?.titre || `Cours #${courseId}`;
+  const displayDescription =
+    course?.description ||
+    'Consultez les chapitres, supports pédagogiques, quiz auto-notés et échanges du cours.';
+  const displayCategoryId = course?.id_categorie ?? '—';
+
   return (
-    <div className="space-y-8 max-w-6xl mx-auto pb-12">
-      {/* En-tête de l'espace Enseignant */}
-      <div className="bg-gradient-to-r from-indigo-700 to-violet-800 rounded-2xl p-8 text-white shadow-xl flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
-        <div>
-          <div className="flex items-center space-x-2 text-indigo-200 text-sm font-semibold mb-2">
-            <BookOpen className="w-4 h-4" />
-            <span>Portail Enseignant</span>
+    <div ref={pageRef} className="relative z-10 space-y-6 max-w-6xl mx-auto pb-16 px-4 sm:px-6 pt-6">
+      <CrawlingPythonBg />
+
+      {/* Top Breadcrumb Bar */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <button
+          type="button"
+          onClick={() => navigate(-1)}
+          className="inline-flex items-center space-x-2 text-sm font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition cursor-pointer"
+        >
+          <ArrowLeft className="w-4 h-4" />
+          <span>Retour aux cours</span>
+        </button>
+
+        <span className="text-xs text-[var(--text-muted)]">
+          Section active :{' '}
+          <strong className="text-[var(--text-primary)]">
+            {activeSection === 'contenu'
+              ? 'Contenu & Chapitres'
+              : activeSection === 'evaluations'
+                ? 'Évaluations & Quiz'
+                : 'Forum du cours'}
+          </strong>
+        </span>
+      </div>
+
+      {/* Course Hero Banner */}
+      <header className="gsap-cd-anim surface-card rounded-2xl p-6 sm:p-8 flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6">
+        <div className="space-y-3 max-w-2xl">
+          <div className="flex flex-wrap items-center gap-2 text-xs">
+            <span className="px-2.5 py-0.5 rounded-full bg-[var(--accent-soft)] text-[var(--accent-text)] border border-[var(--accent-border)] font-medium">
+              Catégorie #{displayCategoryId}
+            </span>
+            <span className="px-2.5 py-0.5 rounded-full bg-[var(--bg-subtle)] text-[var(--text-secondary)] border border-[var(--border-subtle)] tabular-nums">
+              {modules.length} chapitre{modules.length > 1 ? 's' : ''}
+            </span>
+            <span className="px-2.5 py-0.5 rounded-full bg-[var(--bg-subtle)] text-[var(--text-secondary)] border border-[var(--border-subtle)] tabular-nums">
+              {resources.length} support{resources.length > 1 ? 's' : ''}
+            </span>
+            <span className="px-2.5 py-0.5 rounded-full bg-[var(--bg-subtle)] text-[var(--text-secondary)] border border-[var(--border-subtle)] tabular-nums">
+              {evaluations.length} évaluation{evaluations.length > 1 ? 's' : ''}
+            </span>
           </div>
-          <h1 className="text-3xl font-extrabold mb-1">Gestion Pédagogique</h1>
-          <p className="text-indigo-100 text-sm">
-            Créez vos cours, déposez des supports, programmez des évaluations et suivez la progression de vos étudiants.
+
+          <h1 className="font-editorial text-2xl sm:text-3xl text-[var(--text-primary)] leading-snug">
+            {displayTitle}
+          </h1>
+
+          <p className="text-sm text-[var(--text-secondary)] leading-relaxed">
+            {displayDescription}
           </p>
         </div>
 
-        <div className="flex flex-wrap gap-3">
-          <button
-            onClick={() => setShowCreateCategory(true)}
-            className="bg-white/10 hover:bg-white/20 text-white border border-white/20 font-bold px-4 py-3 rounded-xl transition flex items-center space-x-2 text-sm cursor-pointer"
-          >
-            <PlusCircle className="w-5 h-5" />
-            <span>Créer une catégorie</span>
-          </button>
-          <button
-            onClick={() => setShowCreateCourse(true)}
-            className="bg-white text-indigo-700 hover:bg-indigo-50 font-bold px-5 py-3 rounded-xl transition shadow-md flex items-center space-x-2 text-sm cursor-pointer"
-          >
-            <PlusCircle className="w-5 h-5" />
-            <span>Créer un nouveau cours</span>
-          </button>
+        <div className="surface-subtle rounded-xl p-4 w-full lg:w-72 shrink-0 space-y-2.5">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-medium text-[var(--text-secondary)] flex items-center space-x-1.5">
+              <Award className="w-4 h-4 text-[var(--accent-text)]" />
+              <span>Progression</span>
+            </span>
+            <span className="text-lg font-semibold text-[var(--text-primary)] tabular-nums">
+              {courseProgressPercentage}%
+            </span>
+          </div>
+          <div className="w-full bg-[var(--border-subtle)] rounded-full h-2 overflow-hidden">
+            <div
+              className="bg-[var(--accent)] h-full rounded-full transition-all duration-500"
+              style={{ width: `${Math.min(courseProgressPercentage, 100)}%` }}
+            />
+          </div>
+          <div className="flex items-center justify-between text-[11px] text-[var(--text-muted)] tabular-nums">
+            <span>
+              {completedEvaluationsCount}/{evaluations.length} complétée
+              {completedEvaluationsCount > 1 ? 's' : ''}
+            </span>
+            <span>50% rendu · 50% note</span>
+          </div>
         </div>
-      </div>
+      </header>
 
-      {/* Onglets de navigation */}
-      <div className="flex space-x-2 border-b border-gray-200 pb-2">
+      {/* Dedicated Section Navigation Pages */}
+      <nav
+        aria-label="Sections du cours"
+        className="gsap-cd-anim surface-card rounded-2xl p-1.5 grid grid-cols-1 sm:grid-cols-3 gap-1.5"
+      >
         <button
-          onClick={() => setActiveTab('cours')}
-          className={`px-5 py-2.5 rounded-xl font-bold text-sm transition flex items-center space-x-2 cursor-pointer ${
-            activeTab === 'cours' ? 'bg-indigo-600 text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100'
+          type="button"
+          onClick={() => setActiveSection('contenu')}
+          className={`flex items-center justify-center sm:justify-start gap-2.5 px-4 py-3 rounded-xl text-xs sm:text-sm font-medium transition cursor-pointer ${
+            activeSection === 'contenu'
+              ? 'btn-accent'
+              : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-subtle)]'
           }`}
         >
-          <Layers className="w-4 h-4" />
-          <span>Mes Cours & Supports</span>
+          <Layers className="w-4 h-4 shrink-0" />
+          <span>1. Contenu & Chapitres</span>
+          <span
+            className={`ml-auto text-[11px] px-2 py-0.5 rounded-full tabular-nums ${
+              activeSection === 'contenu'
+                ? 'bg-black/20 text-white'
+                : 'bg-[var(--bg-subtle)] text-[var(--text-muted)]'
+            }`}
+          >
+            {resources.length}
+          </span>
         </button>
 
         <button
-          onClick={() => setActiveTab('evaluations')}
-          className={`px-5 py-2.5 rounded-xl font-bold text-sm transition flex items-center space-x-2 cursor-pointer ${
-            activeTab === 'evaluations' ? 'bg-indigo-600 text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100'
+          type="button"
+          onClick={() => setActiveSection('evaluations')}
+          className={`flex items-center justify-center sm:justify-start gap-2.5 px-4 py-3 rounded-xl text-xs sm:text-sm font-medium transition cursor-pointer ${
+            activeSection === 'evaluations'
+              ? 'btn-accent'
+              : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-subtle)]'
           }`}
         >
-          <CheckSquare className="w-4 h-4" />
-          <span>Évaluations & Notes</span>
+          <CheckSquare className="w-4 h-4 shrink-0" />
+          <span>2. Évaluations & Quiz</span>
+          <span
+            className={`ml-auto text-[11px] px-2 py-0.5 rounded-full tabular-nums ${
+              activeSection === 'evaluations'
+                ? 'bg-black/20 text-white'
+                : 'bg-[var(--bg-subtle)] text-[var(--text-muted)]'
+            }`}
+          >
+            {evaluations.length}
+          </span>
         </button>
 
         <button
-          onClick={() => setActiveTab('suivi')}
-          className={`px-5 py-2.5 rounded-xl font-bold text-sm transition flex items-center space-x-2 cursor-pointer ${
-            activeTab === 'suivi' ? 'bg-indigo-600 text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100'
+          type="button"
+          onClick={() => setActiveSection('forum')}
+          className={`flex items-center justify-center sm:justify-start gap-2.5 px-4 py-3 rounded-xl text-xs sm:text-sm font-medium transition cursor-pointer ${
+            activeSection === 'forum'
+              ? 'btn-accent'
+              : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-subtle)]'
           }`}
         >
-          <Users className="w-4 h-4" />
-          <span>Suivi de Classe</span>
+          <MessageSquare className="w-4 h-4 shrink-0" />
+          <span>3. Forum du cours</span>
+          <span
+            className={`ml-auto text-[11px] px-2 py-0.5 rounded-full tabular-nums ${
+              activeSection === 'forum'
+                ? 'bg-black/20 text-white'
+                : 'bg-[var(--bg-subtle)] text-[var(--text-muted)]'
+            }`}
+          >
+            {forumThreadsCount}
+          </span>
         </button>
-      </div>
+      </nav>
 
-      {/* CONTENU ONGLET 1 : COURS & SUPPORTS */}
-      {activeTab === 'cours' && (
-        <div className="space-y-6">
-          {courses.length === 0 ? (
-            <div className="text-center py-12 bg-white rounded-2xl border border-gray-200 shadow-sm">
-              <p className="text-gray-500 font-medium">Vous n'avez pas encore créé de cours.</p>
-              <button
-                onClick={() => setShowCreateCourse(true)}
-                className="mt-4 inline-flex items-center space-x-2 text-indigo-600 font-bold hover:underline cursor-pointer"
-              >
-                <PlusCircle className="w-4 h-4" />
-                <span>Créer votre premier cours</span>
-              </button>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {courses.map((course) => (
-                <div 
-                  key={course.id_cours} 
-                  onClick={() => navigate(`/cours/${course.id_cours}`)}
-                  className="bg-white rounded-2xl p-6 border border-gray-200 shadow-sm flex flex-col justify-between space-y-4 cursor-pointer hover:border-indigo-400 hover:shadow-md transition"
-                >
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-bold uppercase tracking-wider bg-indigo-50 text-indigo-700 px-2.5 py-1 rounded-full">
-                        Catégorie #{course.id_categorie}
-                      </span>
-                      <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${course.est_publie ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
-                        {course.est_publie ? 'Publié' : 'Brouillon'}
-                      </span>
-                    </div>
-                    <h3 className="text-xl font-bold text-gray-900">{course.titre}</h3>
-                    <p className="text-sm text-gray-600 line-clamp-2">{course.description}</p>
+      {/* Main Layout: Active Section Page + Right Companion Rail */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-7 items-start">
+        <div className="lg:col-span-8 space-y-6">
+          {/* SECTION PAGE 1: CONTENU & CHAPITRES */}
+          {activeSection === 'contenu' && (
+            <section className="gsap-cd-anim surface-card rounded-2xl p-6 sm:p-7 space-y-6">
+              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--border-subtle)] pb-4">
+                <div className="flex items-center space-x-3">
+                  <div className="p-2 rounded-xl bg-[var(--accent-soft)] text-[var(--accent-text)]">
+                    <BookOpen className="w-5 h-5" />
                   </div>
-
-                  <div className="space-y-2 pt-4 border-t border-gray-100" onClick={(e) => e.stopPropagation()}>
-                    <div className="flex space-x-2">
-                      <button
-                        onClick={() => setEditCourseData(course)}
-                        className="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold py-2 rounded-xl text-xs transition flex items-center justify-center space-x-1 cursor-pointer"
-                      >
-                        <Edit className="w-3.5 h-3.5" />
-                        <span>Modifier</span>
-                      </button>
-                      <button
-                        onClick={() => setSelectedCourseForRes(course)}
-                        className="flex-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-semibold py-2 rounded-xl text-xs transition flex items-center justify-center space-x-1 cursor-pointer"
-                      >
-                        <Upload className="w-3.5 h-3.5" />
-                        <span>+ Ressource</span>
-                      </button>
-                    </div>
-
-                    <button
-                      onClick={() => setSelectedCourseForEval(course)}
-                      className="w-full bg-violet-50 hover:bg-violet-100 text-violet-700 font-semibold py-2 rounded-xl text-xs transition flex items-center justify-center space-x-1 cursor-pointer"
-                    >
-                      <PlusCircle className="w-3.5 h-3.5" />
-                      <span>Créer une évaluation</span>
-                    </button>
+                  <div>
+                    <h2 className="text-lg font-semibold text-[var(--text-primary)]">
+                      Chapitres & supports pédagogiques
+                    </h2>
+                    <p className="text-xs text-[var(--text-muted)]">
+                      Lisez vos cours, vidéos, PDF et notes Markdown directement dans la page
+                    </p>
                   </div>
                 </div>
-              ))}
-            </div>
+
+                {chapterSections.length > 1 && (
+                  <div className="flex flex-wrap gap-1.5">
+                    {chapterSections.map((sec) => (
+                      <button
+                        key={sec.key}
+                        type="button"
+                        onClick={() => jumpToChapter(sec.key)}
+                        className="text-[11px] font-medium px-2.5 py-1 rounded-lg bg-[var(--bg-subtle)] hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] border border-[var(--border-subtle)] transition cursor-pointer"
+                      >
+                        {sec.orderLabel || sec.title}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {chapterSections.length === 0 ? (
+                <div className="text-center py-12 surface-subtle rounded-xl border-dashed space-y-2">
+                  <FileText className="w-8 h-8 text-[var(--text-muted)] mx-auto" />
+                  <p className="text-sm text-[var(--text-secondary)]">
+                    Aucun chapitre ni support publié dans ce cours pour le moment.
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {chapterSections.map((section) => {
+                    const isCollapsed = Boolean(collapsedChapters[section.key]);
+
+                    return (
+                      <div
+                        id={`chapter-${section.key}`}
+                        key={section.key}
+                        className="rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-subtle)]/40 overflow-hidden scroll-mt-6"
+                      >
+                        <button
+                          type="button"
+                          onClick={() => toggleChapterCollapse(section.key)}
+                          className="w-full px-4 py-3.5 bg-[var(--bg-surface)] hover:bg-[var(--bg-subtle)]/60 transition flex items-center justify-between gap-4 text-left cursor-pointer"
+                        >
+                          <div className="flex items-start space-x-3 min-w-0">
+                            <div className="p-2 rounded-lg bg-[var(--bg-subtle)] text-[var(--text-secondary)] shrink-0 mt-0.5">
+                              <FolderOpen className="w-4 h-4" />
+                            </div>
+                            <div className="min-w-0 space-y-0.5">
+                              <div className="flex flex-wrap items-center gap-2">
+                                {section.orderLabel && (
+                                  <span className="text-[11px] font-medium bg-[var(--accent-soft)] text-[var(--accent-text)] border border-[var(--accent-border)] px-2 py-0.5 rounded-md">
+                                    {section.orderLabel}
+                                  </span>
+                                )}
+                                <h3 className="text-sm font-semibold text-[var(--text-primary)] truncate">
+                                  {section.title}
+                                </h3>
+                              </div>
+                              {section.description && (
+                                <p className="text-xs text-[var(--text-secondary)]">
+                                  {section.description}
+                                </p>
+                              )}
+                            </div>
+                          </div>
+
+                          <div className="flex items-center space-x-2.5 shrink-0">
+                            <span className="text-xs text-[var(--text-muted)] bg-[var(--bg-subtle)] px-2.5 py-0.5 rounded-full tabular-nums">
+                              {section.items.length} support{section.items.length > 1 ? 's' : ''}
+                            </span>
+                            {isCollapsed ? (
+                              <ChevronDown className="w-4 h-4 text-[var(--text-muted)]" />
+                            ) : (
+                              <ChevronUp className="w-4 h-4 text-[var(--text-muted)]" />
+                            )}
+                          </div>
+                        </button>
+
+                        {!isCollapsed && (
+                          <div className="p-3.5 border-t border-[var(--border-subtle)] space-y-2.5">
+                            {section.items.length === 0 ? (
+                              <p className="text-xs text-[var(--text-muted)] italic py-3 text-center">
+                                Aucun support dans ce chapitre pour le moment.
+                              </p>
+                            ) : (
+                              section.items.map((res) => {
+                                const isExpanded = expandedResId === res.id_ressource;
+                                const embedVideoUrl = getVideoEmbedUrl(res.chemin_fichier);
+                                const isDirectVideo =
+                                  !embedVideoUrl &&
+                                  (res.type_fichier === 'video' ||
+                                    /\.(mp4|webm|ogg)$/i.test(res.chemin_fichier));
+                                const isVideo = Boolean(embedVideoUrl) || isDirectVideo;
+                                const isImage =
+                                  res.type_fichier === 'image' ||
+                                  /\.(jpg|jpeg|png|gif|webp|svg)$/i.test(res.chemin_fichier);
+                                const isText =
+                                  res.type_fichier === 'text' ||
+                                  /\.(md|txt|markdown)$/i.test(res.chemin_fichier);
+                                const isPdf =
+                                  res.type_fichier === 'pdf' || /\.pdf$/i.test(res.chemin_fichier);
+                                const resolvedUrl = resolveFileUrl(res.chemin_fichier);
+
+                                return (
+                                  <div
+                                    key={res.id_ressource}
+                                    className={`rounded-xl border transition overflow-hidden ${
+                                      isExpanded
+                                        ? 'bg-[var(--bg-surface)] border-[var(--accent-border)]'
+                                        : 'bg-[var(--bg-surface)] border-[var(--border-subtle)] hover:border-[var(--border-strong)]'
+                                    }`}
+                                  >
+                                    <div className="p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                                      <div
+                                        onClick={() => handleToggleResource(res)}
+                                        className="flex items-start space-x-3 cursor-pointer flex-1 min-w-0"
+                                      >
+                                        <div className="p-2 rounded-lg bg-[var(--bg-subtle)] border border-[var(--border-subtle)] shrink-0 mt-0.5">
+                                          {getResourceIcon(res)}
+                                        </div>
+                                        <div className="min-w-0 space-y-0.5">
+                                          <h4 className="font-medium text-[var(--text-primary)] text-sm truncate">
+                                            {res.nom_fichier}
+                                          </h4>
+                                          <div className="flex flex-wrap items-center gap-2 text-xs text-[var(--text-muted)]">
+                                            <span className="px-1.5 py-0.5 rounded bg-[var(--bg-subtle)] text-[var(--text-secondary)] text-[11px]">
+                                              {res.type_fichier}
+                                            </span>
+                                            {isText && <span>Lecture Markdown</span>}
+                                            {isVideo && <span>Vidéo</span>}
+                                            {isPdf && <span>PDF</span>}
+                                          </div>
+                                        </div>
+                                      </div>
+
+                                      <div className="flex items-center space-x-2 shrink-0 self-end sm:self-center">
+                                        <button
+                                          type="button"
+                                          onClick={() => handleToggleResource(res)}
+                                          className={`inline-flex items-center space-x-1.5 text-xs font-medium px-3 py-1.5 rounded-lg border transition cursor-pointer ${
+                                            isExpanded
+                                              ? 'bg-[var(--accent-soft)] text-[var(--accent-text)] border-[var(--accent-border)]'
+                                              : 'bg-[var(--bg-subtle)] text-[var(--text-primary)] border-[var(--border-subtle)] hover:bg-[var(--bg-hover)]'
+                                          }`}
+                                        >
+                                          <Eye className="w-3.5 h-3.5" />
+                                          <span>{isExpanded ? 'Masquer' : 'Ouvrir'}</span>
+                                        </button>
+
+                                        {resolvedUrl && (
+                                          <a
+                                            href={resolvedUrl}
+                                            download={res.nom_fichier}
+                                            target="_blank"
+                                            rel="noreferrer"
+                                            className="inline-flex items-center space-x-1 text-xs font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] bg-[var(--bg-subtle)] hover:bg-[var(--bg-hover)] border border-[var(--border-subtle)] px-2.5 py-1.5 rounded-lg transition"
+                                            title="Télécharger le support"
+                                          >
+                                            <Download className="w-3.5 h-3.5" />
+                                          </a>
+                                        )}
+                                      </div>
+                                    </div>
+
+                                    {isExpanded && (
+                                      <div className="p-4 border-t border-[var(--border-subtle)] bg-[var(--bg-subtle)]/30 space-y-3">
+                                        {isText && (
+                                          <div className="rounded-xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] p-4 sm:p-5 text-sm text-[var(--text-secondary)] leading-relaxed">
+                                            {loadingTextId === res.id_ressource ? (
+                                              <p className="text-xs text-[var(--text-muted)]">
+                                                Chargement de la note...
+                                              </p>
+                                            ) : (
+                                              <div
+                                                dangerouslySetInnerHTML={{
+                                                  __html: renderMarkdown(
+                                                    textContents[res.id_ressource] || ''
+                                                  ),
+                                                }}
+                                              />
+                                            )}
+                                          </div>
+                                        )}
+
+                                        {embedVideoUrl && (
+                                          <div className="aspect-video w-full rounded-xl overflow-hidden border border-[var(--border-subtle)] bg-black">
+                                            <iframe
+                                              src={embedVideoUrl}
+                                              title={res.nom_fichier}
+                                              className="w-full h-full"
+                                              allowFullScreen
+                                            />
+                                          </div>
+                                        )}
+
+                                        {isDirectVideo && resolvedUrl && (
+                                          <video
+                                            src={resolvedUrl}
+                                            controls
+                                            className="w-full max-h-[420px] rounded-xl border border-[var(--border-subtle)] bg-black"
+                                          />
+                                        )}
+
+                                        {isImage && resolvedUrl && (
+                                          <div className="rounded-xl overflow-hidden border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-2 flex justify-center">
+                                            <img
+                                              src={resolvedUrl}
+                                              alt={res.nom_fichier}
+                                              className="max-h-[420px] w-auto object-contain rounded-lg"
+                                            />
+                                          </div>
+                                        )}
+
+                                        {isPdf && resolvedUrl && (
+                                          <div className="space-y-2">
+                                            <iframe
+                                              src={resolvedUrl}
+                                              title={res.nom_fichier}
+                                              className="w-full h-[460px] rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-surface)]"
+                                            />
+                                            <div className="flex justify-end">
+                                              <a
+                                                href={resolvedUrl}
+                                                target="_blank"
+                                                rel="noreferrer"
+                                                className="inline-flex items-center gap-1.5 text-xs font-medium text-[var(--accent-text)] hover:underline"
+                                              >
+                                                <span>Ouvrir dans un nouvel onglet</span>
+                                                <ExternalLink className="w-3.5 h-3.5" />
+                                              </a>
+                                            </div>
+                                          </div>
+                                        )}
+
+                                        {!isText && !isVideo && !isImage && !isPdf && resolvedUrl && (
+                                          <div className="flex items-center justify-between p-3 rounded-xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] text-xs">
+                                            <span className="text-[var(--text-secondary)]">
+                                              Aperçu intégré non disponible pour ce format.
+                                            </span>
+                                            <a
+                                              href={resolvedUrl}
+                                              target="_blank"
+                                              rel="noreferrer"
+                                              className="inline-flex items-center gap-1 font-medium text-[var(--accent-text)] hover:underline"
+                                            >
+                                              <span>Ouvrir le fichier</span>
+                                              <ExternalLink className="w-3.5 h-3.5" />
+                                            </a>
+                                          </div>
+                                        )}
+                                      </div>
+                                    )}
+                                  </div>
+                                );
+                              })
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </section>
+          )}
+
+          {/* SECTION PAGE 2: ÉVALUATIONS & QUIZ */}
+          {activeSection === 'evaluations' && (
+            <section className="gsap-cd-anim surface-card rounded-2xl p-6 sm:p-7 space-y-5">
+              <div className="flex items-center justify-between border-b border-[var(--border-subtle)] pb-4">
+                <div className="flex items-center space-x-3">
+                  <div className="p-2 rounded-xl bg-[var(--accent-soft)] text-[var(--accent-text)]">
+                    <CheckSquare className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h2 className="text-lg font-semibold text-[var(--text-primary)]">
+                      Évaluations, devoirs & quiz
+                    </h2>
+                    <p className="text-xs text-[var(--text-muted)]">
+                      Soumettez vos fichiers ou passez vos quiz auto-notés et consultez vos notes
+                    </p>
+                  </div>
+                </div>
+                <span className="text-xs font-medium text-[var(--text-secondary)] tabular-nums">
+                  {completedEvaluationsCount}/{evaluations.length} rendue(s)
+                </span>
+              </div>
+
+              {evaluations.length === 0 ? (
+                <div className="text-center py-12 surface-subtle rounded-xl border-dashed space-y-2">
+                  <CheckSquare className="w-8 h-8 text-[var(--text-muted)] mx-auto" />
+                  <p className="text-sm text-[var(--text-secondary)]">
+                    Aucune évaluation publiée pour ce cours pour le moment.
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-3.5">
+                  {evaluations.map((ev) => {
+                    const isQuiz = (ev as any).type_evaluation === 'quiz';
+                    const sub = mySubmissions[ev.id_evaluation];
+                    const hasNote = sub && sub.note !== null && sub.note !== undefined;
+
+                    return (
+                      <div
+                        key={ev.id_evaluation}
+                        className="p-4 rounded-xl bg-[var(--bg-subtle)]/50 border border-[var(--border-subtle)] flex flex-col sm:flex-row sm:items-center justify-between gap-4"
+                      >
+                        <div className="space-y-1">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span
+                              className={`text-[11px] font-medium px-2 py-0.5 rounded-md border ${
+                                isQuiz
+                                  ? 'bg-[var(--accent-soft)] text-[var(--accent-text)] border-[var(--accent-border)]'
+                                  : 'bg-[var(--bg-surface)] text-[var(--text-secondary)] border-[var(--border-subtle)]'
+                              }`}
+                            >
+                              {isQuiz ? 'Quiz auto-noté' : 'Devoir à rendre'}
+                            </span>
+                            <span className="text-xs text-[var(--text-muted)] tabular-nums">
+                              Barème : {ev.bareme} pts
+                            </span>
+                            {sub && (
+                              <span className="inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-full bg-[var(--success-bg)] text-[var(--success-text)] border border-[var(--success-border)]">
+                                <CheckCircle2 className="w-3 h-3" />
+                                <span>
+                                  {hasNote
+                                    ? `Note : ${sub.note}/${ev.bareme}`
+                                    : 'Soumis · En attente de note'}
+                                </span>
+                              </span>
+                            )}
+                          </div>
+
+                          <h3 className="text-sm sm:text-base font-semibold text-[var(--text-primary)]">
+                            {ev.titre}
+                          </h3>
+                          {ev.description && (
+                            <p className="text-xs text-[var(--text-secondary)]">{ev.description}</p>
+                          )}
+                          {sub?.commentaires && (
+                            <p className="text-xs text-[var(--accent-text)] pt-0.5">
+                              Remarque enseignant : {sub.commentaires}
+                            </p>
+                          )}
+                        </div>
+
+                        <div className="shrink-0 flex items-center gap-2">
+                          <button
+                            type="button"
+                            disabled={loadingQuiz}
+                            onClick={() => handleOpenEvaluationAction(ev)}
+                            className="inline-flex items-center gap-1.5 btn-accent px-4 py-2 rounded-xl text-xs font-medium cursor-pointer disabled:opacity-50"
+                          >
+                            {isQuiz ? (
+                              <>
+                                <PlayCircle className="w-3.5 h-3.5" />
+                                <span>{sub ? 'Refaire le quiz' : 'Passer le quiz'}</span>
+                              </>
+                            ) : (
+                              <>
+                                <Upload className="w-3.5 h-3.5" />
+                                <span>{sub ? 'Mettre à jour le rendu' : 'Soumettre un devoir'}</span>
+                              </>
+                            )}
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </section>
+          )}
+
+          {/* SECTION PAGE 3: FORUM DU COURS */}
+          {activeSection === 'forum' && (
+            <section className="gsap-cd-anim surface-card rounded-2xl p-6 sm:p-7 space-y-4">
+              <div className="flex items-center justify-between border-b border-[var(--border-subtle)] pb-4">
+                <div className="flex items-center space-x-3">
+                  <div className="p-2 rounded-xl bg-[var(--accent-soft)] text-[var(--accent-text)]">
+                    <MessageSquare className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h2 className="text-lg font-semibold text-[var(--text-primary)]">
+                      Discussions & entraide
+                    </h2>
+                    <p className="text-xs text-[var(--text-muted)]">
+                      Posez vos questions aux enseignants et partagez des ressources
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <ForumSection
+                courseId={courseId}
+                currentUserId={sessionUser.id_user}
+                currentUserRole={sessionUser.role}
+              />
+            </section>
           )}
         </div>
-      )}
 
-      {/* CONTENU ONGLET 2 : EVALUATIONS & CORRECTION */}
-      {activeTab === 'evaluations' && (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <div className="bg-white rounded-2xl p-6 border border-gray-200 shadow-sm space-y-4">
-            <h2 className="text-lg font-bold text-gray-900">1. Choisir un cours</h2>
-            <div className="space-y-2">
-              {courses.map((course) => (
-                <button
-                  key={course.id_cours}
-                  onClick={() => handleSelectCourseForEvaluations(course)}
-                  className="w-full text-left p-3 rounded-xl border border-gray-200 hover:bg-indigo-50 hover:border-indigo-300 transition text-sm font-semibold text-gray-800 cursor-pointer flex items-center justify-between"
-                >
-                  <span className="truncate">{course.titre}</span>
-                  <BookOpen className="w-4 h-4 text-indigo-600 shrink-0" />
-                </button>
-              ))}
-            </div>
-          </div>
+        {/* Right Companion Rail */}
+        <aside className="lg:col-span-4 space-y-5">
+          <div className="gsap-cd-anim surface-card rounded-2xl p-5 space-y-4">
+            <h2 className="text-sm font-semibold text-[var(--text-primary)] border-b border-[var(--border-subtle)] pb-3">
+              Plan du cours
+            </h2>
 
-          <div className="bg-white rounded-2xl p-6 border border-gray-200 shadow-sm space-y-4">
-            <h2 className="text-lg font-bold text-gray-900">2. Choisir une évaluation</h2>
-            {evaluationsList.length === 0 ? (
-              <p className="text-sm text-gray-500 italic py-4">Sélectionnez un cours pour voir ses évaluations.</p>
+            {chapterSections.length === 0 ? (
+              <p className="text-xs text-[var(--text-muted)]">Aucun chapitre disponible.</p>
             ) : (
-              <div className="space-y-2">
-                {evaluationsList.map((ev) => (
+              <div className="space-y-1.5">
+                {chapterSections.map((sec) => (
                   <button
-                    key={ev.id_evaluation}
-                    onClick={() => handleSelectEvalForGrading(ev)}
-                    className={`w-full text-left p-3 rounded-xl border transition text-sm font-semibold cursor-pointer flex items-center justify-between ${
-                      selectedEvalForGrading?.id_evaluation === ev.id_evaluation 
-                        ? 'bg-indigo-600 text-white border-indigo-600' 
-                        : 'border-gray-200 hover:bg-gray-50 text-gray-800'
-                    }`}
+                    key={sec.key}
+                    type="button"
+                    onClick={() => jumpToChapter(sec.key)}
+                    className="w-full px-3 py-2 rounded-xl bg-[var(--bg-subtle)]/50 hover:bg-[var(--bg-subtle)] border border-[var(--border-subtle)] flex items-center justify-between gap-2 text-left transition cursor-pointer"
                   >
-                    <div>
-                      <span className="block font-bold">{ev.titre}</span>
-                      <span className={`text-xs ${selectedEvalForGrading?.id_evaluation === ev.id_evaluation ? 'text-indigo-200' : 'text-gray-500'}`}>
-                        Barème : {ev.bareme} pts
-                      </span>
-                    </div>
+                    <span className="text-xs font-medium text-[var(--text-primary)] truncate">
+                      {sec.orderLabel ? `${sec.orderLabel} · ${sec.title}` : sec.title}
+                    </span>
+                    <span className="text-[11px] text-[var(--text-muted)] shrink-0 tabular-nums">
+                      {sec.items.length}
+                    </span>
                   </button>
                 ))}
               </div>
             )}
           </div>
 
-          <div className="bg-white rounded-2xl p-6 border border-gray-200 shadow-sm space-y-4 lg:col-span-1">
-            <h2 className="text-lg font-bold text-gray-900">3. Soumissions & Notes</h2>
-            {!selectedEvalForGrading ? (
-              <p className="text-sm text-gray-500 italic py-4">Sélectionnez une évaluation pour afficher les soumissions.</p>
-            ) : submissionsList.length === 0 ? (
-              <p className="text-sm text-gray-500 italic py-4">Aucun étudiant n'a encore soumis de devoir pour cette évaluation.</p>
-            ) : (
-              <div className="space-y-4">
-                {submissionsList.map((sub) => (
-                  <div key={sub.id_soumission} className="p-4 bg-gray-50 rounded-xl border border-gray-200 space-y-3">
-                    <div className="flex justify-between items-start text-xs text-gray-500">
-                      <span>Étudiant ID : {sub.id_etudiant.slice(0, 8)}...</span>
-                      <span>{new Date(sub.date_envoi).toLocaleDateString()}</span>
-                    </div>
-
-                    <div>
-                      <span className="text-xs font-bold text-gray-700 block mb-1">Fichier rendu :</span>
-                      <a href={sub.fichier_soumis} target="_blank" rel="noreferrer" className="text-xs font-medium text-indigo-600 hover:underline break-all">
-                        Télécharger / Ouvrir le fichier
-                      </a>
-                    </div>
-
-                    <div className="pt-2 border-t border-gray-200 flex items-center justify-between">
-                      <div>
-                        <span className="text-xs text-gray-500 block">Note actuelle :</span>
-                        <span className="font-bold text-gray-900 text-sm">
-                          {sub.note_obtenue !== null ? `${sub.note_obtenue} / ${selectedEvalForGrading.bareme}` : 'Non noté'}
-                        </span>
-                      </div>
-
-                      <button
-                        onClick={() => {
-                          setGradingSubId(sub.id_soumission);
-                          setGradeValue(sub.note_obtenue || 0);
-                          setGradeComment(sub.commentaire_professeur || '');
-                        }}
-                        className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold px-3 py-2 rounded-lg transition cursor-pointer"
-                      >
-                        Noter / Corriger
-                      </button>
-                    </div>
-
-                    {gradingSubId === sub.id_soumission && (
-                      <div className="bg-white p-3 rounded-lg border border-indigo-200 space-y-3 mt-3">
-                        <div>
-                          <label className="block text-xs font-bold text-gray-700 mb-1">Note (sur {selectedEvalForGrading.bareme})</label>
-                          <input
-                            type="number"
-                            max={selectedEvalForGrading.bareme}
-                            min={0}
-                            step={0.5}
-                            value={gradeValue}
-                            onChange={(e) => setGradeValue(Number(e.target.value))}
-                            className="w-full px-3 py-1.5 border rounded-lg text-sm"
-                          />
-                        </div>
-
-                        <div>
-                          <label className="block text-xs font-bold text-gray-700 mb-1">Commentaires</label>
-                          <textarea
-                            value={gradeComment}
-                            onChange={(e) => setGradeComment(e.target.value)}
-                            placeholder="Remarques pour l'étudiant..."
-                            className="w-full px-3 py-1.5 border rounded-lg text-sm"
-                            rows={2}
-                          />
-                        </div>
-
-                        <div className="flex space-x-2">
-                          <button
-                            onClick={() => setGradingSubId(null)}
-                            className="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold py-1.5 rounded-lg cursor-pointer"
-                          >
-                            Annuler
-                          </button>
-                          <button
-                            onClick={() => handleGradeSubmit(sub.id_soumission)}
-                            className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold py-1.5 rounded-lg cursor-pointer"
-                          >
-                            Enregistrer
-                          </button>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
+          <div className="gsap-cd-anim surface-card rounded-2xl p-5 space-y-3">
+            <h2 className="text-sm font-semibold text-[var(--text-primary)]">Raccourcis rapides</h2>
+            <div className="space-y-2 text-xs">
+              <button
+                type="button"
+                onClick={() => setActiveSection('evaluations')}
+                className="w-full px-3.5 py-2.5 rounded-xl bg-[var(--bg-subtle)] hover:bg-[var(--bg-hover)] text-[var(--text-primary)] border border-[var(--border-subtle)] flex items-center justify-between transition cursor-pointer"
+              >
+                <span>Voir mes évaluations ({evaluations.length})</span>
+                <CheckSquare className="w-3.5 h-3.5 text-[var(--accent-text)]" />
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveSection('forum')}
+                className="w-full px-3.5 py-2.5 rounded-xl bg-[var(--bg-subtle)] hover:bg-[var(--bg-hover)] text-[var(--text-primary)] border border-[var(--border-subtle)] flex items-center justify-between transition cursor-pointer"
+              >
+                <span>Ouvrir le forum ({forumThreadsCount})</span>
+                <MessageSquare className="w-3.5 h-3.5 text-[var(--accent-text)]" />
+              </button>
+            </div>
           </div>
-        </div>
-      )}
+        </aside>
+      </div>
 
-      {/* CONTENU ONGLET 3 : SUIVI DE CLASSE */}
-      {activeTab === 'suivi' && (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <div className="bg-white rounded-2xl p-6 border border-gray-200 shadow-sm space-y-4">
-            <h2 className="text-lg font-bold text-gray-900">Sélectionner un cours</h2>
-            <div className="space-y-2">
-              {courses.map((course) => (
+      {/* File Submission Modal */}
+      {selectedEval && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs"
+          onClick={() => !uploading && setSelectedEval(null)}
+        >
+          <div
+            className="w-full max-w-md rounded-2xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] shadow-2xl p-6 space-y-5"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <span className="text-[11px] font-medium text-[var(--accent-text)]">
+                  Soumission de devoir
+                </span>
+                <h3 className="text-base font-semibold text-[var(--text-primary)]">
+                  {selectedEval.titre}
+                </h3>
+              </div>
+              <button
+                type="button"
+                disabled={uploading}
+                onClick={() => setSelectedEval(null)}
+                className="p-1.5 rounded-lg text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSubmitWork} className="space-y-4">
+              <div>
+                <label className="block text-xs font-medium text-[var(--text-secondary)] mb-1.5">
+                  Fichier à envoyer
+                </label>
+                <input
+                  type="file"
+                  required
+                  onChange={(e) => setSubmissionFile(e.target.files?.[0] || null)}
+                  className="w-full text-xs text-[var(--text-secondary)] file:mr-3 file:py-2 file:px-3.5 file:rounded-xl file:border file:border-[var(--border-subtle)] file:text-xs file:font-medium file:bg-[var(--bg-subtle)] file:text-[var(--text-primary)] hover:file:bg-[var(--bg-hover)] cursor-pointer"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-[var(--border-subtle)]">
                 <button
-                  key={course.id_cours}
-                  onClick={() => handleSelectCourseForTracking(course)}
-                  className={`w-full text-left p-3 rounded-xl border transition text-sm font-semibold cursor-pointer flex items-center justify-between ${
-                    selectedCourseForTracking?.id_cours === course.id_cours 
-                      ? 'bg-indigo-600 text-white border-indigo-600' 
-                      : 'border-gray-200 hover:bg-gray-50 text-gray-800'
-                  }`}
-                >
-                  <span className="truncate">{course.titre}</span>
-                  <Users className="w-4 h-4 shrink-0" />
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div className="bg-white rounded-2xl p-6 border border-gray-200 shadow-sm space-y-4 md:col-span-2">
-            <h2 className="text-lg font-bold text-gray-900">
-              {selectedCourseForTracking ? `Étudiants inscrits (${selectedCourseForTracking.titre})` : 'Liste des inscrits'}
-            </h2>
-
-            {!selectedCourseForTracking ? (
-              <p className="text-sm text-gray-500 italic py-4">Veuillez sélectionner un cours pour afficher ses inscrits.</p>
-            ) : studentsList.length === 0 ? (
-              <p className="text-sm text-gray-500 italic py-4">Aucun étudiant n'est inscrit à ce cours pour le moment.</p>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-sm text-gray-600">
-                  <thead className="bg-gray-50 text-xs uppercase font-bold text-gray-700">
-                    <tr>
-                      <th className="px-4 py-3 rounded-l-lg">Étudiant</th>
-                      <th className="px-4 py-3">Email</th>
-                      <th className="px-4 py-3">Date inscription</th>
-                      <th className="px-4 py-3 rounded-r-lg">Progression</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-100">
-                    {studentsList.map((st, idx) => (
-                      <tr key={idx} className="hover:bg-gray-50">
-                        <td className="px-4 py-3 font-bold text-gray-900">{st.prenom} {st.nom}</td>
-                        <td className="px-4 py-3 text-gray-500">{st.email}</td>
-                        <td className="px-4 py-3 text-gray-500">{new Date(st.date_inscription).toLocaleDateString()}</td>
-                        <td className="px-4 py-3">
-                          <div className="flex items-center space-x-2">
-                            <div className="w-24 bg-gray-200 rounded-full h-2 overflow-hidden">
-                              <div className="bg-indigo-600 h-full rounded-full" style={{ width: `${st.progression_pourcentage}%` }}></div>
-                            </div>
-                            <span className="text-xs font-bold text-gray-700">{st.progression_pourcentage}%</span>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* MODAL : CRÉATION DE CATÉGORIE */}
-      {showCreateCategory && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-xl space-y-6">
-            <div className="flex justify-between items-center">
-              <h3 className="text-xl font-bold text-gray-900">Créer une catégorie</h3>
-              <button onClick={() => setShowCreateCategory(false)} className="text-gray-400 hover:text-gray-600 font-bold cursor-pointer">✕</button>
-            </div>
-
-            <form onSubmit={handleCreateCategorySubmit} className="space-y-4">
-              <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-gray-600 mb-1">Nom de la catégorie</label>
-                <input 
-                  type="text" 
-                  value={catName} 
-                  onChange={(e) => setCatName(e.target.value)} 
-                  placeholder="ex: Développement Web" 
-                  required 
-                  className="w-full px-4 py-2.5 bg-gray-50 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" 
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-gray-600 mb-1">Description</label>
-                <textarea 
-                  value={catDesc} 
-                  onChange={(e) => setCatDesc(e.target.value)} 
-                  placeholder="Description de la catégorie..." 
-                  required 
-                  rows={3} 
-                  className="w-full px-4 py-2.5 bg-gray-50 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" 
-                />
-              </div>
-
-              <div className="flex space-x-3 pt-2">
-                <button 
-                  type="button" 
-                  onClick={() => setShowCreateCategory(false)} 
-                  className="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-700 py-2.5 rounded-xl text-sm font-medium cursor-pointer"
+                  type="button"
+                  disabled={uploading}
+                  onClick={() => setSelectedEval(null)}
+                  className="px-4 py-2 rounded-xl text-xs font-medium bg-[var(--bg-subtle)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] cursor-pointer"
                 >
                   Annuler
                 </button>
-                <button 
-                  type="submit" 
-                  className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white py-2.5 rounded-xl text-sm font-medium shadow-sm cursor-pointer"
+                <button
+                  type="submit"
+                  disabled={uploading || !submissionFile}
+                  className="btn-accent px-4 py-2 rounded-xl text-xs font-medium disabled:opacity-50 cursor-pointer"
                 >
-                  Créer
+                  {uploading ? 'Envoi en cours...' : 'Envoyer le devoir'}
                 </button>
               </div>
             </form>
@@ -654,205 +1187,22 @@ export default function TeacherDashboard() {
         </div>
       )}
 
-      {/* MODAL : CRÉATION DE COURS */}
-      {showCreateCourse && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-xl space-y-6">
-            <div className="flex justify-between items-center">
-              <h3 className="text-xl font-bold text-gray-900">Créer un nouveau cours</h3>
-              <button onClick={() => setShowCreateCourse(false)} className="text-gray-400 hover:text-gray-600 font-bold cursor-pointer">✕</button>
-            </div>
-
-            <form onSubmit={handleCreateCourseSubmit} className="space-y-4">
-              <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-gray-600 mb-1">Titre du cours</label>
-                <input type="text" value={newTitle} onChange={(e) => setNewTitle(e.target.value)} required className="w-full px-4 py-2.5 bg-gray-50 border border-gray-300 rounded-xl text-sm" />
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-gray-600 mb-1">Description</label>
-                <textarea value={newDesc} onChange={(e) => setNewDesc(e.target.value)} required rows={3} className="w-full px-4 py-2.5 bg-gray-50 border border-gray-300 rounded-xl text-sm" />
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-gray-600 mb-1">Catégorie</label>
-                <select value={newCat} onChange={(e) => setNewCat(Number(e.target.value))} className="w-full px-4 py-2.5 bg-gray-50 border border-gray-300 rounded-xl text-sm">
-                  {categories.map((cat) => (
-                    <option key={cat.id_categorie} value={cat.id_categorie}>{cat.nom}</option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="flex items-center space-x-2">
-                <input type="checkbox" id="pub" checked={newPub} onChange={(e) => setNewPub(e.target.checked)} className="w-4 h-4 text-indigo-600 rounded" />
-                <label htmlFor="pub" className="text-sm font-semibold text-gray-700">Publier immédiatement</label>
-              </div>
-
-              <div className="flex space-x-3 pt-2">
-                <button type="button" onClick={() => setShowCreateCourse(false)} className="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-700 py-2.5 rounded-xl text-sm font-medium cursor-pointer">Annuler</button>
-                <button type="submit" className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white py-2.5 rounded-xl text-sm font-medium shadow-sm cursor-pointer">Créer le cours</button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* MODAL : MODIFICATION DE COURS */}
-      {editCourseData && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-xl space-y-6">
-            <div className="flex justify-between items-center">
-              <h3 className="text-xl font-bold text-gray-900">Modifier le cours</h3>
-              <button onClick={() => setEditCourseData(null)} className="text-gray-400 hover:text-gray-600 font-bold cursor-pointer">✕</button>
-            </div>
-
-            <form onSubmit={handleUpdateCourseSubmit} className="space-y-4">
-              <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-gray-600 mb-1">Titre</label>
-                <input type="text" value={editCourseData.titre} onChange={(e) => setEditCourseData({...editCourseData, titre: e.target.value})} required className="w-full px-4 py-2.5 bg-gray-50 border rounded-xl text-sm" />
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-gray-600 mb-1">Description</label>
-                <textarea value={editCourseData.description} onChange={(e) => setEditCourseData({...editCourseData, description: e.target.value})} required rows={3} className="w-full px-4 py-2.5 bg-gray-50 border rounded-xl text-sm" />
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-gray-600 mb-1">Catégorie</label>
-                <select value={editCourseData.id_categorie} onChange={(e) => setEditCourseData({...editCourseData, id_categorie: Number(e.target.value)})} className="w-full px-4 py-2.5 bg-gray-50 border rounded-xl text-sm">
-                  {categories.map((cat) => (
-                    <option key={cat.id_categorie} value={cat.id_categorie}>{cat.nom}</option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="flex items-center space-x-2">
-                <input type="checkbox" id="editpub" checked={editCourseData.est_publie} onChange={(e) => setEditCourseData({...editCourseData, est_publie: e.target.checked})} className="w-4 h-4 text-indigo-600 rounded" />
-                <label htmlFor="editpub" className="text-sm font-semibold text-gray-700">Publié</label>
-              </div>
-
-              <div className="flex space-x-3 pt-2">
-                <button type="button" onClick={() => setEditCourseData(null)} className="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-700 py-2.5 rounded-xl text-sm font-medium cursor-pointer">Annuler</button>
-                <button type="submit" className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white py-2.5 rounded-xl text-sm font-medium shadow-sm cursor-pointer">Enregistrer</button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* MODAL : UPLOAD RESSOURCE (AVEC SELECTEUR DE FICHIER) */}
-      {selectedCourseForRes && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-xl space-y-6">
-            <div className="flex justify-between items-center">
-              <h3 className="text-lg font-bold text-gray-900">Ajouter une ressource</h3>
-              <button onClick={() => setSelectedCourseForRes(null)} className="text-gray-400 hover:text-gray-600 font-bold cursor-pointer">✕</button>
-            </div>
-
-            <form onSubmit={handleUploadResSubmit} className="space-y-4">
-              <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-gray-600 mb-1">Titre du support (optionnel)</label>
-                <input 
-                  type="text" 
-                  value={resName} 
-                  onChange={(e) => setResName(e.target.value)} 
-                  placeholder="ex: Chapitre 1 - Introduction" 
-                  className="w-full px-4 py-2.5 bg-gray-50 border rounded-xl text-sm" 
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-gray-600 mb-1">Type de ressource</label>
-                <select value={resType} onChange={(e) => setResType(e.target.value)} className="w-full px-4 py-2.5 bg-gray-50 border rounded-xl text-sm">
-                  <option value="pdf">PDF</option>
-                  <option value="video">Vidéo</option>
-                  <option value="image">Image</option>
-                  <option value="text">Texte / Archive</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-gray-600 mb-1">Sélectionner le fichier</label>
-                <input 
-                  type="file" 
-                  onChange={(e) => setResFile(e.target.files ? e.target.files[0] : null)} 
-                  required 
-                  className="w-full px-4 py-2 bg-gray-50 border rounded-xl text-sm file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-xs file:font-bold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100 cursor-pointer" 
-                />
-              </div>
-
-              <div className="flex space-x-3 pt-2">
-                <button type="button" onClick={() => setSelectedCourseForRes(null)} className="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-700 py-2.5 rounded-xl text-sm font-medium cursor-pointer">Annuler</button>
-                <button type="submit" className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white py-2.5 rounded-xl text-sm font-medium shadow-sm cursor-pointer">Uploader</button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* MODAL : CREATION D'EVALUATION (AVEC SELECTEUR DE FICHIER) */}
-      {selectedCourseForEval && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-xl space-y-6">
-            <div className="flex justify-between items-center">
-              <h3 className="text-lg font-bold text-gray-900">Créer une évaluation</h3>
-              <button onClick={() => setSelectedCourseForEval(null)} className="text-gray-400 hover:text-gray-600 font-bold cursor-pointer">✕</button>
-            </div>
-
-            <form onSubmit={handleCreateEvalSubmit} className="space-y-4">
-              <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-gray-600 mb-1">Titre de l'évaluation</label>
-                <input type="text" value={evalTitle} onChange={(e) => setEvalTitle(e.target.value)} placeholder="ex: Projet Final - API Go" required className="w-full px-4 py-2.5 bg-gray-50 border rounded-xl text-sm" />
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-gray-600 mb-1">Instructions détaillées</label>
-                <textarea value={evalInstructions} onChange={(e) => setEvalInstructions(e.target.value)} placeholder="Consignes de l'évaluation..." required rows={3} className="w-full px-4 py-2.5 bg-gray-50 border rounded-xl text-sm" />
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-gray-600 mb-1">Barème (ex: 20)</label>
-                <input type="number" value={evalBareme} onChange={(e) => setEvalBareme(Number(e.target.value))} required className="w-full px-4 py-2.5 bg-gray-50 border rounded-xl text-sm" />
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-bold uppercase tracking-wider text-gray-600 mb-1">Date d'ouverture</label>
-                  <input type="date" value={evalOpen} onChange={(e) => setEvalOpen(e.target.value)} required className="w-full px-4 py-2.5 bg-gray-50 border rounded-xl text-sm" />
-                </div>
-                <div>
-                  <label className="block text-xs font-bold uppercase tracking-wider text-gray-600 mb-1">Date de clôture</label>
-                  <input type="date" value={evalClose} onChange={(e) => setEvalClose(e.target.value)} required className="w-full px-4 py-2.5 bg-gray-50 border rounded-xl text-sm" />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-gray-600 mb-1">Nom personnalisé du sujet (optionnel)</label>
-                <input 
-                  type="text" 
-                  value={evalNomFichier} 
-                  onChange={(e) => setEvalNomFichier(e.target.value)} 
-                  placeholder="ex: Enonce_TP1.pdf" 
-                  className="w-full px-4 py-2.5 bg-gray-50 border rounded-xl text-sm" 
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-gray-600 mb-1">Fichier du sujet (optionnel)</label>
-                <input 
-                  type="file" 
-                  onChange={(e) => setEvalFile(e.target.files ? e.target.files[0] : null)} 
-                  className="w-full px-4 py-2 bg-gray-50 border rounded-xl text-sm file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-xs file:font-bold file:bg-violet-50 file:text-violet-700 hover:file:bg-violet-100 cursor-pointer" 
-                />
-              </div>
-
-              <div className="flex space-x-3 pt-2">
-                <button type="button" onClick={() => setSelectedCourseForEval(null)} className="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-700 py-2.5 rounded-xl text-sm font-medium cursor-pointer">Annuler</button>
-                <button type="submit" className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white py-2.5 rounded-xl text-sm font-medium shadow-sm cursor-pointer">Créer</button>
-              </div>
-            </form>
-          </div>
-        </div>
+      {/* Quiz Player Modal */}
+      {activeQuizEval && (
+        <QuizPlayerModal
+          evaluation={activeQuizEval}
+          questions={activeQuizQuestions}
+          onClose={() => {
+            setActiveQuizEval(null);
+            setActiveQuizQuestions([]);
+          }}
+          onCompleted={() => {
+            setActiveQuizEval(null);
+            setActiveQuizQuestions([]);
+            success('Quiz soumis avec succès !');
+            fetchCourseData();
+          }}
+        />
       )}
     </div>
   );

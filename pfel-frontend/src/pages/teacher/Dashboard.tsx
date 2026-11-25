@@ -1,105 +1,165 @@
 // File: src/pages/teacher/Dashboard.tsx
-import { useNavigate } from 'react-router-dom';
-import React, { useEffect, useState } from 'react';
-import { 
-  getCatalog, 
-  getCategories, 
-  createCourse, 
-  updateCourse, 
-  getCourseResources, 
-  uploadResource, 
-  getCourseEvaluations, 
-  createEvaluation, 
-  getEvaluationSubmissions, 
-  gradeSubmission, 
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import gsap from 'gsap';
+import {
+  getCatalog,
+  getCategories,
+  getCourseResources,
+  getCourseEvaluations,
   getCourseStudents,
-  createCategory,
-  getProfile
+  getProfile,
+  getEvaluationQuiz,
+  saveEvaluationQuiz,
 } from '../../api/services';
-import type { Cours, Categorie, Ressource, Evaluation, Soumission, Utilisateur } from '../../types';
-import { 
-  BookOpen, 
-  PlusCircle, 
-  FileText, 
-  CheckSquare, 
-  Users, 
-  Edit, 
-  Upload, 
-  Award, 
-  CheckCircle, 
-  Clock, 
-  Layers 
+import type { Categorie, Cours, Evaluation, Utilisateur } from '../../types';
+import type { TeacherCourseStats } from './teacherDashboard.types';
+import { useToast } from '../../context/ToastContext';
+import { CrawlingPythonBg } from '../../components/ui/CrawlingPythonBg';
+import { Skeleton } from '../../components/ui/Skeleton';
+import CoursesTab from './CoursesTab';
+import EvaluationsTab from './EvaluationsTab';
+import ClassTrackingTab from './ClassTrackingTab';
+import CourseFormModal from '../components/CourseFormModal';
+import CategoryModal from '../components/CategoryModal';
+import ModuleManagerModal from '../components/ModuleManagerModal';
+import ResourceUploadModal from '../components/ResourceUploadModal';
+import EvaluationCreateModal from '../components/EvaluationCreateModal';
+import QuizBuilderModal, { type DraftQuizQuestion } from '../components/QuizBuilderModal';
+import {
+  BookOpen,
+  PlusCircle,
+  CheckSquare,
+  Users,
+  Layers,
+  FileText,
 } from 'lucide-react';
 
+function resolveEvalId(raw: any): number | null {
+  const val =
+    raw?.id_evaluation ??
+    raw?.id ??
+    raw?.data?.id_evaluation ??
+    raw?.data?.id ??
+    raw?.evaluation?.id_evaluation ??
+    raw?.evaluation?.id;
+  const num = Number(val);
+  return Number.isFinite(num) && num > 0 ? num : null;
+}
+
+const SnakeLoader: React.FC<{ label: string }> = ({ label }) => {
+  const loaderRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!loaderRef.current) return;
+
+    const ctx = gsap.context(() => {
+      const segments = gsap.utils.toArray<HTMLElement>('.gsap-snake-seg');
+      segments.forEach((seg, idx) => {
+        gsap.to(seg, {
+          y: idx % 2 === 0 ? -7 : 7,
+          scale: 1.15 - idx * 0.04,
+          duration: 0.45,
+          repeat: -1,
+          yoyo: true,
+          ease: 'sine.inOut',
+          delay: idx * 0.06,
+        });
+      });
+    }, loaderRef);
+
+    return () => ctx.revert();
+  }, []);
+
+  return (
+    <div ref={loaderRef} className="flex flex-col items-center justify-center gap-3 py-6">
+      <div className="flex items-center gap-1.5" aria-hidden="true">
+        {Array.from({ length: 8 }).map((_, i) => (
+          <span
+            key={i}
+            className={`gsap-snake-seg rounded-full ${
+              i === 7
+                ? 'w-3.5 h-3.5 bg-[var(--accent)] shadow-sm'
+                : 'w-2.5 h-2.5 bg-[var(--accent-soft)] border border-[var(--accent-border)]'
+            }`}
+          />
+        ))}
+      </div>
+      <p className="text-xs font-medium text-[var(--text-secondary)]">{label}</p>
+    </div>
+  );
+};
+
 export default function TeacherDashboard() {
-  const [evalNomFichier, setEvalNomFichier] = useState('');
-  const [evalCheminFichier, setEvalCheminFichier] = useState('');
-  const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<'cours' | 'evaluations' | 'suivi'>('cours');
-    
   const [courses, setCourses] = useState<Cours[]>([]);
   const [categories, setCategories] = useState<Categorie[]>([]);
   const [currentUser, setCurrentUser] = useState<Utilisateur | null>(null);
+  const [courseStats, setCourseStats] = useState<Record<number, TeacherCourseStats>>({});
   const [loading, setLoading] = useState(true);
+  const { success, error: showError } = useToast();
 
-  // Modals / Form states
   const [showCreateCourse, setShowCreateCourse] = useState(false);
   const [editCourseData, setEditCourseData] = useState<Cours | null>(null);
-
-  // New Category Form states
   const [showCreateCategory, setShowCreateCategory] = useState(false);
-  const [catName, setCatName] = useState('');
-  const [catDesc, setCatDesc] = useState('');
-    
-  // New Course Form
-  const [newTitle, setNewTitle] = useState('');
-  const [newDesc, setNewDesc] = useState('');
-  const [newCat, setNewCat] = useState<number>(1);
-  const [newPub, setNewPub] = useState(true);
-
-  // Resource Upload Modal
+  const [selectedCourseForModules, setSelectedCourseForModules] = useState<Cours | null>(null);
   const [selectedCourseForRes, setSelectedCourseForRes] = useState<Cours | null>(null);
-  const [resName, setResName] = useState('');
-  const [resPath, setResPath] = useState('');
-  const [resType, setResType] = useState('pdf');
-
-  // Evaluation Creation Modal
   const [selectedCourseForEval, setSelectedCourseForEval] = useState<Cours | null>(null);
-  const [evalTitle, setEvalTitle] = useState('');
-  const [evalInstructions, setEvalInstructions] = useState('');
-  const [evalBareme, setEvalBareme] = useState(20);
-  const [evalOpen, setEvalOpen] = useState('');
-  const [evalClose, setEvalClose] = useState('');
 
-  // Grading Modal / Drawer
-  const [selectedEvalForGrading, setSelectedEvalForGrading] = useState<Evaluation | null>(null);
-  const [evaluationsList, setEvaluationsList] = useState<Evaluation[]>([]);
-  const [submissionsList, setSubmissionsList] = useState<Soumission[]>([]);
-  const [gradingSubId, setGradingSubId] = useState<number | null>(null);
-  const [gradeValue, setGradeValue] = useState<number>(0);
-  const [gradeComment, setGradeComment] = useState('');
+  const [quizTargetEval, setQuizTargetEval] = useState<Evaluation | null>(null);
+  const [quizInitialQuestions, setQuizInitialQuestions] = useState<DraftQuizQuestion[]>([]);
 
-  // Class Tracking
-  const [selectedCourseForTracking, setSelectedCourseForTracking] = useState<Cours | null>(null);
-  const [studentsList, setStudentsList] = useState<any[]>([]);
+  const pageRef = useRef<HTMLDivElement | null>(null);
 
   const fetchData = async () => {
     try {
       const [catData, courseData, profileData] = await Promise.all([
-        getCategories(),
-        getCatalog(),
-        getProfile()
+        getCategories().catch(() => []),
+        getCatalog().catch(() => []),
+        getProfile(),
       ]);
+
       setCategories(catData || []);
       setCurrentUser(profileData);
 
-      // Filtrer pour n'afficher que les cours créés par l'enseignant connecté
       const myCourses = (courseData || []).filter(
         (course) => course.id_enseignant === profileData.id_user
       );
       setCourses(myCourses);
+
+      const statsMap: Record<number, TeacherCourseStats> = {};
+      await Promise.all(
+        myCourses.map(async (c) => {
+          const [resList, evalList, stdList] = await Promise.all([
+            getCourseResources(c.id_cours).catch(() => []),
+            getCourseEvaluations(c.id_cours).catch(() => []),
+            getCourseStudents(c.id_cours).catch(() => []),
+          ]);
+          const rArr = resList || [];
+          const eArr = evalList || [];
+          const sArr = stdList || [];
+
+          const avgProg =
+            sArr.length > 0
+              ? Math.round(
+                  sArr.reduce(
+                    (acc: number, s: any) => acc + Number(s.progression_pourcentage || 0),
+                    0
+                  ) / sArr.length
+                )
+              : 0;
+
+          statsMap[c.id_cours] = {
+            resourceCount: rArr.length,
+            evalCount: eArr.length,
+            studentCount: sArr.length,
+            avgProgress: avgProg,
+          };
+        })
+      );
+      setCourseStats(statsMap);
     } catch (err) {
       console.error('Erreur de chargement:', err);
+      showError("Impossible de charger les données de l'espace enseignant.");
     } finally {
       setLoading(false);
     }
@@ -109,742 +169,333 @@ export default function TeacherDashboard() {
     fetchData();
   }, []);
 
-  // Création de catégorie
-  const handleCreateCategorySubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    try {
-      await createCategory({ nom: catName, description: catDesc });
-      alert('Catégorie créée avec succès !');
-      setShowCreateCategory(false);
-      setCatName('');
-      setCatDesc('');
-      fetchData();
-    } catch (err) {
-      console.error(err);
-      alert("Erreur lors de la création de la catégorie.");
-    }
-  };
+  useEffect(() => {
+    if (loading || !pageRef.current) return;
 
-  // Création de cours
-  const handleCreateCourseSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    try {
-      await createCourse({ titre: newTitle, description: newDesc, est_publie: newPub, id_categorie: Number(newCat) });
-      alert('Cours créé avec succès !');
-      setShowCreateCourse(false);
-      setNewTitle('');
-      setNewDesc('');
-      fetchData();
-    } catch (err) {
-      console.error(err);
-      alert("Erreur lors de la création du cours.");
-    }
-  };
-
-  // Modification de cours
-  const handleUpdateCourseSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!editCourseData) return;
-    try {
-      await updateCourse(editCourseData.id_cours, {
-        titre: editCourseData.titre,
-        description: editCourseData.description,
-        est_publie: editCourseData.est_publie,
-        id_categorie: editCourseData.id_categorie
+    const ctx = gsap.context(() => {
+      gsap.from('.gsap-dash-hero', {
+        y: 18,
+        opacity: 0,
+        duration: 0.65,
+        ease: 'power3.out',
+        clearProps: 'transform,opacity',
       });
-      alert('Cours mis à jour avec succès !');
-      setEditCourseData(null);
-      fetchData();
-    } catch (err) {
-      console.error(err);
-      alert("Erreur lors de la mise à jour.");
-    }
-  };
 
-  // Upload Ressource
-  const handleUploadResSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!selectedCourseForRes) return;
-    try {
-      await uploadResource(selectedCourseForRes.id_cours, {
-        nom_fichier: resName,
-        chemin_fichier: resPath,
-        type_fichier: resType
+      gsap.from('.gsap-dash-stat', {
+        y: 14,
+        opacity: 0,
+        duration: 0.5,
+        stagger: 0.07,
+        delay: 0.15,
+        ease: 'power2.out',
+        clearProps: 'transform,opacity',
       });
-      alert('Ressource ajoutée avec succès !');
-      setSelectedCourseForRes(null);
-      setResName('');
-      setResPath('');
-    } catch (err) {
-      console.error(err);
-      alert("Erreur lors de l'upload de la ressource.");
+    }, pageRef);
+
+    return () => ctx.revert();
+  }, [loading]);
+
+  const openQuizBuilderForEvaluation = async (ev: Evaluation) => {
+    try {
+      const existing = await getEvaluationQuiz(ev.id_evaluation).catch(() => []);
+      const mapped: DraftQuizQuestion[] = (existing || []).map((q) => ({
+        id: q.id_question,
+        question_type: q.question_type,
+        prompt: q.prompt,
+        options: q.options || ['Choix 1', 'Choix 2'],
+        correct_index: q.correct_index ?? 0,
+        points: q.points ?? 2,
+        explanation: q.explanation || '',
+      }));
+      setQuizInitialQuestions(mapped);
+    } catch {
+      setQuizInitialQuestions([]);
+    }
+    setQuizTargetEval(ev);
+  };
+
+  const handleOpenQuizForCourse = async (course: Cours) => {
+    const evals = await getCourseEvaluations(course.id_cours).catch(() => []);
+    const quizEval = (evals || []).find((ev: any) => ev.type_evaluation === 'quiz');
+    if (quizEval) {
+      await openQuizBuilderForEvaluation(quizEval);
+      return;
+    }
+    setSelectedCourseForEval(course);
+  };
+
+  const handleEvaluationCreated = async (
+    created?: any,
+    evalType?: 'file' | 'quiz',
+    courseId?: number
+  ) => {
+    await fetchData();
+    const isQuiz = evalType === 'quiz' || created?.type_evaluation === 'quiz';
+    if (!isQuiz) return;
+
+    let targetId = resolveEvalId(created);
+    const resolvedCourseId = Number(created?.id_cours ?? courseId ?? 0);
+
+    if (!targetId && resolvedCourseId > 0) {
+      const evals = await getCourseEvaluations(resolvedCourseId).catch(() => []);
+      const list = Array.isArray(evals) ? evals : [];
+      const matching =
+        [...list].reverse().find((ev: any) => ev?.titre === created?.titre) ||
+        [...list].reverse().find((ev: any) => ev?.type_evaluation === 'quiz') ||
+        list[list.length - 1];
+      targetId = resolveEvalId(matching);
+    }
+
+    if (targetId) {
+      await openQuizBuilderForEvaluation({
+        ...(typeof created === 'object' && created !== null ? created : {}),
+        id_evaluation: targetId,
+        id_cours: resolvedCourseId,
+        titre: created?.titre || 'Quiz',
+        bareme: Number(created?.bareme) || 20,
+      } as Evaluation);
     }
   };
 
-  // Création d'évaluation
-  const handleCreateEvalSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!selectedCourseForEval) return;
-    try {
-      await createEvaluation(selectedCourseForEval.id_cours, {
-        titre: evalTitle,
-        instructions: evalInstructions,
-        bareme: Number(evalBareme),
-        date_ouverture: evalOpen ? new Date(evalOpen).toISOString() : new Date().toISOString(),
-        date_cloture: evalClose ? new Date(evalClose).toISOString() : new Date().toISOString(),
-        nom_fichier: evalNomFichier,
-        chemin_fichier: evalCheminFichier
-      });
-      alert('Évaluation créée avec succès !');
-      setSelectedCourseForEval(null);
-      setEvalTitle('');
-      setEvalInstructions('');
-      setEvalNomFichier('');
-      setEvalCheminFichier('');
-    } catch (err) {
-      console.error(err);
-      alert("Erreur lors de la création de l'évaluation.");
-    }
-  };
+  const categoryMap = useMemo(() => {
+    const map = new Map<number, string>();
+    categories.forEach((cat) => map.set(cat.id_categorie, cat.nom));
+    return map;
+  }, [categories]);
 
-  // Charger les évaluations pour un cours
-  const handleSelectCourseForEvaluations = async (course: Cours) => {
-    try {
-      const evals = await getCourseEvaluations(course.id_cours);
-      setEvaluationsList(evals || []);
-      setSelectedEvalForGrading(null);
-      setSubmissionsList([]);
-    } catch (err) {
-      console.error(err);
-    }
-  };
+  const globalStats = useMemo(() => {
+    let totalStudents = 0;
+    let totalResources = 0;
+    let totalEvaluations = 0;
 
-  // Charger les soumissions pour une évaluation
-  const handleSelectEvalForGrading = async (evaluation: Evaluation) => {
-    setSelectedEvalForGrading(evaluation);
-    try {
-      const subs = await getEvaluationSubmissions(evaluation.id_evaluation);
-      setSubmissionsList(subs || []);
-    } catch (err) {
-      console.error(err);
-    }
-  };
-
-  // Noter une soumission
-  const handleGradeSubmit = async (subId: number) => {
-    try {
-      await gradeSubmission(subId, gradeValue, gradeComment);
-      alert('Note enregistrée avec succès !');
-      setGradingSubId(null);
-      if (selectedEvalForGrading) {
-        const subs = await getEvaluationSubmissions(selectedEvalForGrading.id_evaluation);
-        setSubmissionsList(subs || []);
+    courses.forEach((c) => {
+      const st = courseStats[c.id_cours];
+      if (st) {
+        totalStudents += st.studentCount;
+        totalResources += st.resourceCount;
+        totalEvaluations += st.evalCount;
       }
-    } catch (err) {
-      console.error(err);
-      alert("Erreur lors de l'enregistrement de la note.");
-    }
-  };
+    });
 
-  // Charger les étudiants inscrits à un cours
-  const handleSelectCourseForTracking = async (course: Cours) => {
-    setSelectedCourseForTracking(course);
-    try {
-      const students = await getCourseStudents(course.id_cours);
-      setStudentsList(students || []);
-    } catch (err) {
-      console.error(err);
-    }
-  };
+    return {
+      totalCourses: courses.length,
+      publishedCourses: courses.filter((c) => c.est_publie).length,
+      draftCourses: courses.filter((c) => !c.est_publie).length,
+      totalStudents,
+      totalResources,
+      totalEvaluations,
+    };
+  }, [courses, courseStats]);
 
   if (loading) {
-    return <div className="text-center mt-12 text-gray-500 font-medium">Chargement de votre espace enseignant...</div>;
+    return (
+      <div className="relative z-10 max-w-6xl mx-auto pb-16 px-4 sm:px-6 pt-6 space-y-6">
+        <CrawlingPythonBg />
+        <div className="surface-card rounded-2xl p-6 sm:p-8 space-y-5">
+          <SnakeLoader label="Chargement de l'espace enseignant..." />
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            {[0, 1, 2, 3].map((idx) => (
+              <Skeleton key={idx} className="h-20 w-full rounded-xl" />
+            ))}
+          </div>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {[0, 1].map((idx) => (
+            <Skeleton key={idx} className="h-44 w-full rounded-2xl" />
+          ))}
+        </div>
+      </div>
+    );
   }
 
   return (
-    <div className="space-y-8 max-w-6xl mx-auto pb-12">
-      {/* En-tête de l'espace Enseignant */}
-      <div className="bg-gradient-to-r from-indigo-700 to-violet-800 rounded-2xl p-8 text-white shadow-xl flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
-        <div>
-          <div className="flex items-center space-x-2 text-indigo-200 text-sm font-semibold mb-2">
-            <BookOpen className="w-4 h-4" />
-            <span>Portail Enseignant</span>
-          </div>
-          <h1 className="text-3xl font-extrabold mb-1">Gestion Pédagogique</h1>
-          <p className="text-indigo-100 text-sm">
-            Créez vos cours, déposez des supports, programmez des évaluations et suivez la progression de vos étudiants.
+    <div ref={pageRef} className="relative z-10 space-y-8 max-w-6xl mx-auto pb-16 px-4 sm:px-6 pt-6">
+      <CrawlingPythonBg />
+
+      <section className="gsap-dash-hero surface-card rounded-2xl p-6 sm:p-8 flex flex-col lg:flex-row lg:items-center justify-between gap-6">
+        <div className="space-y-3 max-w-2xl">
+          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-[var(--accent-soft)] text-[var(--accent-text)] border border-[var(--accent-border)]">
+            Portail enseignant
+          </span>
+          <h1 className="font-editorial text-2xl sm:text-3xl text-[var(--text-primary)]">
+            Bonjour{currentUser ? `, Prof. ${currentUser.prenom} ${currentUser.nom}` : ''}
+          </h1>
+          <p className="text-sm text-[var(--text-secondary)] leading-relaxed">
+            Organisez vos chapitres, rédigez vos notes en Markdown, créez des quiz auto-notés et suivez votre classe.
           </p>
+
+          <div className="flex flex-wrap gap-3 pt-1">
+            <button
+              onClick={() => setShowCreateCourse(true)}
+              className="inline-flex items-center space-x-2 btn-accent text-xs sm:text-sm font-medium px-4 py-2 rounded-xl cursor-pointer transition-transform hover:-translate-y-0.5"
+            >
+              <PlusCircle className="w-4 h-4" />
+              <span>Créer un cours</span>
+            </button>
+            <button
+              onClick={() => setShowCreateCategory(true)}
+              className="inline-flex items-center space-x-2 bg-[var(--bg-subtle)] hover:bg-[var(--bg-hover)] text-[var(--text-primary)] border border-[var(--border-subtle)] text-xs sm:text-sm font-medium px-4 py-2 rounded-xl transition cursor-pointer"
+            >
+              <PlusCircle className="w-4 h-4" />
+              <span>Nouvelle catégorie</span>
+            </button>
+          </div>
         </div>
 
-        <div className="flex flex-wrap gap-3">
-          <button
-            onClick={() => setShowCreateCategory(true)}
-            className="bg-white/10 hover:bg-white/20 text-white border border-white/20 font-bold px-4 py-3 rounded-xl transition flex items-center space-x-2 text-sm cursor-pointer"
-          >
-            <PlusCircle className="w-5 h-5" />
-            <span>Créer une catégorie</span>
-          </button>
-          <button
-            onClick={() => setShowCreateCourse(true)}
-            className="bg-white text-indigo-700 hover:bg-indigo-50 font-bold px-5 py-3 rounded-xl transition shadow-md flex items-center space-x-2 text-sm cursor-pointer"
-          >
-            <PlusCircle className="w-5 h-5" />
-            <span>Créer un nouveau cours</span>
-          </button>
-        </div>
-      </div>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 shrink-0">
+          <div className="gsap-dash-stat surface-subtle rounded-xl p-3.5 text-center space-y-1">
+            <BookOpen className="w-4 h-4 text-[var(--accent-text)] mx-auto" />
+            <span className="block text-xl font-semibold text-[var(--text-primary)] tabular-nums">
+              {globalStats.totalCourses}
+            </span>
+            <span className="block text-[11px] text-[var(--text-muted)]">Cours</span>
+          </div>
 
-      {/* Onglets de navigation */}
-      <div className="flex space-x-2 border-b border-gray-200 pb-2">
+          <div className="gsap-dash-stat surface-subtle rounded-xl p-3.5 text-center space-y-1">
+            <Users className="w-4 h-4 text-[var(--success-text)] mx-auto" />
+            <span className="block text-xl font-semibold text-[var(--text-primary)] tabular-nums">
+              {globalStats.totalStudents}
+            </span>
+            <span className="block text-[11px] text-[var(--text-muted)]">Étudiants</span>
+          </div>
+
+          <div className="gsap-dash-stat surface-subtle rounded-xl p-3.5 text-center space-y-1">
+            <FileText className="w-4 h-4 text-[var(--text-secondary)] mx-auto" />
+            <span className="block text-xl font-semibold text-[var(--text-primary)] tabular-nums">
+              {globalStats.totalResources}
+            </span>
+            <span className="block text-[11px] text-[var(--text-muted)]">Supports</span>
+          </div>
+
+          <div className="gsap-dash-stat surface-subtle rounded-xl p-3.5 text-center space-y-1">
+            <CheckSquare className="w-4 h-4 text-[var(--accent-text)] mx-auto" />
+            <span className="block text-xl font-semibold text-[var(--text-primary)] tabular-nums">
+              {globalStats.totalEvaluations}
+            </span>
+            <span className="block text-[11px] text-[var(--text-muted)]">Évaluations</span>
+          </div>
+        </div>
+      </section>
+
+      <div className="flex flex-wrap gap-2 border-b border-[var(--border-subtle)] pb-3">
         <button
           onClick={() => setActiveTab('cours')}
-          className={`px-5 py-2.5 rounded-xl font-bold text-sm transition flex items-center space-x-2 cursor-pointer ${
-            activeTab === 'cours' ? 'bg-indigo-600 text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100'
+          className={`px-4 py-2 rounded-xl text-xs sm:text-sm font-medium transition flex items-center space-x-2 cursor-pointer ${
+            activeTab === 'cours'
+              ? 'btn-accent'
+              : 'bg-[var(--bg-subtle)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] border border-[var(--border-subtle)]'
           }`}
         >
           <Layers className="w-4 h-4" />
-          <span>Mes Cours & Supports</span>
+          <span>Mes cours ({courses.length})</span>
         </button>
 
         <button
           onClick={() => setActiveTab('evaluations')}
-          className={`px-5 py-2.5 rounded-xl font-bold text-sm transition flex items-center space-x-2 cursor-pointer ${
-            activeTab === 'evaluations' ? 'bg-indigo-600 text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100'
+          className={`px-4 py-2 rounded-xl text-xs sm:text-sm font-medium transition flex items-center space-x-2 cursor-pointer ${
+            activeTab === 'evaluations'
+              ? 'btn-accent'
+              : 'bg-[var(--bg-subtle)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] border border-[var(--border-subtle)]'
           }`}
         >
           <CheckSquare className="w-4 h-4" />
-          <span>Évaluations & Notes</span>
+          <span>Corrections & notes</span>
         </button>
 
         <button
           onClick={() => setActiveTab('suivi')}
-          className={`px-5 py-2.5 rounded-xl font-bold text-sm transition flex items-center space-x-2 cursor-pointer ${
-            activeTab === 'suivi' ? 'bg-indigo-600 text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100'
+          className={`px-4 py-2 rounded-xl text-xs sm:text-sm font-medium transition flex items-center space-x-2 cursor-pointer ${
+            activeTab === 'suivi'
+              ? 'btn-accent'
+              : 'bg-[var(--bg-subtle)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] border border-[var(--border-subtle)]'
           }`}
         >
           <Users className="w-4 h-4" />
-          <span>Suivi de Classe</span>
+          <span>Suivi de classe</span>
         </button>
       </div>
 
-      {/* CONTENU ONGLET 1 : COURS & SUPPORTS */}
       {activeTab === 'cours' && (
-        <div className="space-y-6">
-          {courses.length === 0 ? (
-            <div className="text-center py-12 bg-white rounded-2xl border border-gray-200 shadow-sm">
-              <p className="text-gray-500 font-medium">Vous n'avez pas encore créé de cours.</p>
-              <button
-                onClick={() => setShowCreateCourse(true)}
-                className="mt-4 inline-flex items-center space-x-2 text-indigo-600 font-bold hover:underline cursor-pointer"
-              >
-                <PlusCircle className="w-4 h-4" />
-                <span>Créer votre premier cours</span>
-              </button>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {courses.map((course) => (
-                <div 
-                  key={course.id_cours} 
-                  onClick={() => navigate(`/cours/${course.id_cours}`)}
-                  className="bg-white rounded-2xl p-6 border border-gray-200 shadow-sm flex flex-col justify-between space-y-4 cursor-pointer hover:border-indigo-400 hover:shadow-md transition"
-                >
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-bold uppercase tracking-wider bg-indigo-50 text-indigo-700 px-2.5 py-1 rounded-full">
-                        Catégorie #{course.id_categorie}
-                      </span>
-                      <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${course.est_publie ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
-                        {course.est_publie ? 'Publié' : 'Brouillon'}
-                      </span>
-                    </div>
-                    <h3 className="text-xl font-bold text-gray-900">{course.titre}</h3>
-                    <p className="text-sm text-gray-600 line-clamp-2">{course.description}</p>
-                  </div>
-
-                  <div className="space-y-2 pt-4 border-t border-gray-100" onClick={(e) => e.stopPropagation()}>
-                    <div className="flex space-x-2">
-                      <button
-                        onClick={() => setEditCourseData(course)}
-                        className="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold py-2 rounded-xl text-xs transition flex items-center justify-center space-x-1 cursor-pointer"
-                      >
-                        <Edit className="w-3.5 h-3.5" />
-                        <span>Modifier</span>
-                      </button>
-                      <button
-                        onClick={() => setSelectedCourseForRes(course)}
-                        className="flex-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-semibold py-2 rounded-xl text-xs transition flex items-center justify-center space-x-1 cursor-pointer"
-                      >
-                        <Upload className="w-3.5 h-3.5" />
-                        <span>+ Ressource</span>
-                      </button>
-                    </div>
-
-                    <button
-                      onClick={() => setSelectedCourseForEval(course)}
-                      className="w-full bg-violet-50 hover:bg-violet-100 text-violet-700 font-semibold py-2 rounded-xl text-xs transition flex items-center justify-center space-x-1 cursor-pointer"
-                    >
-                      <PlusCircle className="w-3.5 h-3.5" />
-                      <span>Créer une évaluation</span>
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
+        <CoursesTab
+          courses={courses}
+          categoryMap={categoryMap}
+          courseStats={courseStats}
+          globalStats={globalStats}
+          onOpenCreateCourse={() => setShowCreateCourse(true)}
+          onEditCourse={(course) => setEditCourseData(course)}
+          onOpenModules={(course) => setSelectedCourseForModules(course)}
+          onOpenResourceUpload={(course) => setSelectedCourseForRes(course)}
+          onOpenEvaluationCreate={(course) => setSelectedCourseForEval(course)}
+          onOpenQuizForCourse={handleOpenQuizForCourse}
+        />
       )}
 
-      {/* CONTENU ONGLET 2 : EVALUATIONS & CORRECTION */}
       {activeTab === 'evaluations' && (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <div className="bg-white rounded-2xl p-6 border border-gray-200 shadow-sm space-y-4">
-            <h2 className="text-lg font-bold text-gray-900">1. Choisir un cours</h2>
-            <div className="space-y-2">
-              {courses.map((course) => (
-                <button
-                  key={course.id_cours}
-                  onClick={() => handleSelectCourseForEvaluations(course)}
-                  className="w-full text-left p-3 rounded-xl border border-gray-200 hover:bg-indigo-50 hover:border-indigo-300 transition text-sm font-semibold text-gray-800 cursor-pointer flex items-center justify-between"
-                >
-                  <span className="truncate">{course.titre}</span>
-                  <BookOpen className="w-4 h-4 text-indigo-600 shrink-0" />
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div className="bg-white rounded-2xl p-6 border border-gray-200 shadow-sm space-y-4">
-            <h2 className="text-lg font-bold text-gray-900">2. Choisir une évaluation</h2>
-            {evaluationsList.length === 0 ? (
-              <p className="text-sm text-gray-500 italic py-4">Sélectionnez un cours pour voir ses évaluations.</p>
-            ) : (
-              <div className="space-y-2">
-                {evaluationsList.map((ev) => (
-                  <button
-                    key={ev.id_evaluation}
-                    onClick={() => handleSelectEvalForGrading(ev)}
-                    className={`w-full text-left p-3 rounded-xl border transition text-sm font-semibold cursor-pointer flex items-center justify-between ${
-                      selectedEvalForGrading?.id_evaluation === ev.id_evaluation 
-                        ? 'bg-indigo-600 text-white border-indigo-600' 
-                        : 'border-gray-200 hover:bg-gray-50 text-gray-800'
-                    }`}
-                  >
-                    <div>
-                      <span className="block font-bold">{ev.titre}</span>
-                      <span className={`text-xs ${selectedEvalForGrading?.id_evaluation === ev.id_evaluation ? 'text-indigo-200' : 'text-gray-500'}`}>
-                        Barème : {ev.bareme} pts
-                      </span>
-                    </div>
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-
-          <div className="bg-white rounded-2xl p-6 border border-gray-200 shadow-sm space-y-4 lg:col-span-1">
-            <h2 className="text-lg font-bold text-gray-900">3. Soumissions & Notes</h2>
-            {!selectedEvalForGrading ? (
-              <p className="text-sm text-gray-500 italic py-4">Sélectionnez une évaluation pour afficher les soumissions.</p>
-            ) : submissionsList.length === 0 ? (
-              <p className="text-sm text-gray-500 italic py-4">Aucun étudiant n'a encore soumis de devoir pour cette évaluation.</p>
-            ) : (
-              <div className="space-y-4">
-                {submissionsList.map((sub) => (
-                  <div key={sub.id_soumission} className="p-4 bg-gray-50 rounded-xl border border-gray-200 space-y-3">
-                    <div className="flex justify-between items-start text-xs text-gray-500">
-                      <span>Étudiant ID : {sub.id_etudiant.slice(0, 8)}...</span>
-                      <span>{new Date(sub.date_envoi).toLocaleDateString()}</span>
-                    </div>
-
-                    <div>
-                      <span className="text-xs font-bold text-gray-700 block mb-1">Fichier rendu :</span>
-                      <a href={sub.fichier_soumis} target="_blank" rel="noreferrer" className="text-xs font-medium text-indigo-600 hover:underline break-all">
-                        {sub.fichier_soumis}
-                      </a>
-                    </div>
-
-                    <div className="pt-2 border-t border-gray-200 flex items-center justify-between">
-                      <div>
-                        <span className="text-xs text-gray-500 block">Note actuelle :</span>
-                        <span className="font-bold text-gray-900 text-sm">
-                          {sub.note_obtenue !== null ? `${sub.note_obtenue} / ${selectedEvalForGrading.bareme}` : 'Non noté'}
-                        </span>
-                      </div>
-
-                      <button
-                        onClick={() => {
-                          setGradingSubId(sub.id_soumission);
-                          setGradeValue(sub.note_obtenue || 0);
-                          setGradeComment(sub.commentaire_professeur || '');
-                        }}
-                        className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold px-3 py-2 rounded-lg transition cursor-pointer"
-                      >
-                        Noter / Corriger
-                      </button>
-                    </div>
-
-                    {gradingSubId === sub.id_soumission && (
-                      <div className="bg-white p-3 rounded-lg border border-indigo-200 space-y-3 mt-3">
-                        <div>
-                          <label className="block text-xs font-bold text-gray-700 mb-1">Note (sur {selectedEvalForGrading.bareme})</label>
-                          <input
-                            type="number"
-                            max={selectedEvalForGrading.bareme}
-                            min={0}
-                            step={0.5}
-                            value={gradeValue}
-                            onChange={(e) => setGradeValue(Number(e.target.value))}
-                            className="w-full px-3 py-1.5 border rounded-lg text-sm"
-                          />
-                        </div>
-
-                        <div>
-                          <label className="block text-xs font-bold text-gray-700 mb-1">Commentaires</label>
-                          <textarea
-                            value={gradeComment}
-                            onChange={(e) => setGradeComment(e.target.value)}
-                            placeholder="Remarques pour l'étudiant..."
-                            className="w-full px-3 py-1.5 border rounded-lg text-sm"
-                            rows={2}
-                          />
-                        </div>
-
-                        <div className="flex space-x-2">
-                          <button
-                            onClick={() => setGradingSubId(null)}
-                            className="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold py-1.5 rounded-lg cursor-pointer"
-                          >
-                            Annuler
-                          </button>
-                          <button
-                            onClick={() => handleGradeSubmit(sub.id_soumission)}
-                            className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold py-1.5 rounded-lg cursor-pointer"
-                          >
-                            Enregistrer
-                          </button>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
+        <EvaluationsTab courses={courses} courseStats={courseStats} onGraded={fetchData} />
       )}
 
-      {/* CONTENU ONGLET 3 : SUIVI DE CLASSE */}
-      {activeTab === 'suivi' && (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <div className="bg-white rounded-2xl p-6 border border-gray-200 shadow-sm space-y-4">
-            <h2 className="text-lg font-bold text-gray-900">Sélectionner un cours</h2>
-            <div className="space-y-2">
-              {courses.map((course) => (
-                <button
-                  key={course.id_cours}
-                  onClick={() => handleSelectCourseForTracking(course)}
-                  className={`w-full text-left p-3 rounded-xl border transition text-sm font-semibold cursor-pointer flex items-center justify-between ${
-                    selectedCourseForTracking?.id_cours === course.id_cours 
-                      ? 'bg-indigo-600 text-white border-indigo-600' 
-                      : 'border-gray-200 hover:bg-gray-50 text-gray-800'
-                  }`}
-                >
-                  <span className="truncate">{course.titre}</span>
-                  <Users className="w-4 h-4 shrink-0" />
-                </button>
-              ))}
-            </div>
-          </div>
+      {activeTab === 'suivi' && <ClassTrackingTab courses={courses} courseStats={courseStats} />}
 
-          <div className="bg-white rounded-2xl p-6 border border-gray-200 shadow-sm space-y-4 md:col-span-2">
-            <h2 className="text-lg font-bold text-gray-900">
-              {selectedCourseForTracking ? `Étudiants inscrits (${selectedCourseForTracking.titre})` : 'Liste des inscrits'}
-            </h2>
-
-            {!selectedCourseForTracking ? (
-              <p className="text-sm text-gray-500 italic py-4">Veuillez sélectionner un cours pour afficher ses inscrits.</p>
-            ) : studentsList.length === 0 ? (
-              <p className="text-sm text-gray-500 italic py-4">Aucun étudiant n'est inscrit à ce cours pour le moment.</p>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-sm text-gray-600">
-                  <thead className="bg-gray-50 text-xs uppercase font-bold text-gray-700">
-                    <tr>
-                      <th className="px-4 py-3 rounded-l-lg">Étudiant</th>
-                      <th className="px-4 py-3">Email</th>
-                      <th className="px-4 py-3">Date inscription</th>
-                      <th className="px-4 py-3 rounded-r-lg">Progression</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-100">
-                    {studentsList.map((st, idx) => (
-                      <tr key={idx} className="hover:bg-gray-50">
-                        <td className="px-4 py-3 font-bold text-gray-900">{st.prenom} {st.nom}</td>
-                        <td className="px-4 py-3 text-gray-500">{st.email}</td>
-                        <td className="px-4 py-3 text-gray-500">{new Date(st.date_inscription).toLocaleDateString()}</td>
-                        <td className="px-4 py-3">
-                          <div className="flex items-center space-x-2">
-                            <div className="w-24 bg-gray-200 rounded-full h-2 overflow-hidden">
-                              <div className="bg-indigo-600 h-full rounded-full" style={{ width: `${st.progression_pourcentage}%` }}></div>
-                            </div>
-                            <span className="text-xs font-bold text-gray-700">{st.progression_pourcentage}%</span>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
-        </div>
+      {selectedCourseForModules && (
+        <ModuleManagerModal
+          course={selectedCourseForModules}
+          onClose={() => setSelectedCourseForModules(null)}
+          onUpdated={fetchData}
+        />
       )}
 
-      {/* MODAL : CRÉATION DE CATÉGORIE */}
       {showCreateCategory && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-xl space-y-6">
-            <div className="flex justify-between items-center">
-              <h3 className="text-xl font-bold text-gray-900">Créer une catégorie</h3>
-              <button onClick={() => setShowCreateCategory(false)} className="text-gray-400 hover:text-gray-600 font-bold cursor-pointer">✕</button>
-            </div>
-
-            <form onSubmit={handleCreateCategorySubmit} className="space-y-4">
-              <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-gray-600 mb-1">Nom de la catégorie</label>
-                <input 
-                  type="text" 
-                  value={catName} 
-                  onChange={(e) => setCatName(e.target.value)} 
-                  placeholder="ex: Développement Web" 
-                  required 
-                  className="w-full px-4 py-2.5 bg-gray-50 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" 
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-gray-600 mb-1">Description</label>
-                <textarea 
-                  value={catDesc} 
-                  onChange={(e) => setCatDesc(e.target.value)} 
-                  placeholder="Description de la catégorie..." 
-                  required 
-                  rows={3} 
-                  className="w-full px-4 py-2.5 bg-gray-50 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" 
-                />
-              </div>
-
-              <div className="flex space-x-3 pt-2">
-                <button 
-                  type="button" 
-                  onClick={() => setShowCreateCategory(false)} 
-                  className="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-700 py-2.5 rounded-xl text-sm font-medium cursor-pointer"
-                >
-                  Annuler
-                </button>
-                <button 
-                  type="submit" 
-                  className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white py-2.5 rounded-xl text-sm font-medium shadow-sm cursor-pointer"
-                >
-                  Créer
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
+        <CategoryModal onClose={() => setShowCreateCategory(false)} onCreated={fetchData} />
       )}
 
-      {/* MODAL : CRÉATION DE COURS */}
       {showCreateCourse && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-xl space-y-6">
-            <div className="flex justify-between items-center">
-              <h3 className="text-xl font-bold text-gray-900">Créer un nouveau cours</h3>
-              <button onClick={() => setShowCreateCourse(false)} className="text-gray-400 hover:text-gray-600 font-bold cursor-pointer">✕</button>
-            </div>
-
-            <form onSubmit={handleCreateCourseSubmit} className="space-y-4">
-              <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-gray-600 mb-1">Titre du cours</label>
-                <input type="text" value={newTitle} onChange={(e) => setNewTitle(e.target.value)} required className="w-full px-4 py-2.5 bg-gray-50 border border-gray-300 rounded-xl text-sm" />
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-gray-600 mb-1">Description</label>
-                <textarea value={newDesc} onChange={(e) => setNewDesc(e.target.value)} required rows={3} className="w-full px-4 py-2.5 bg-gray-50 border border-gray-300 rounded-xl text-sm" />
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-gray-600 mb-1">Catégorie</label>
-                <select value={newCat} onChange={(e) => setNewCat(Number(e.target.value))} className="w-full px-4 py-2.5 bg-gray-50 border border-gray-300 rounded-xl text-sm">
-                  {categories.map((cat) => (
-                    <option key={cat.id_categorie} value={cat.id_categorie}>{cat.nom}</option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="flex items-center space-x-2">
-                <input type="checkbox" id="pub" checked={newPub} onChange={(e) => setNewPub(e.target.checked)} className="w-4 h-4 text-indigo-600 rounded" />
-                <label htmlFor="pub" className="text-sm font-semibold text-gray-700">Publier immédiatement</label>
-              </div>
-
-              <div className="flex space-x-3 pt-2">
-                <button type="button" onClick={() => setShowCreateCourse(false)} className="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-700 py-2.5 rounded-xl text-sm font-medium cursor-pointer">Annuler</button>
-                <button type="submit" className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white py-2.5 rounded-xl text-sm font-medium shadow-sm cursor-pointer">Créer le cours</button>
-              </div>
-            </form>
-          </div>
-        </div>
+        <CourseFormModal
+          categories={categories}
+          onClose={() => setShowCreateCourse(false)}
+          onSaved={fetchData}
+        />
       )}
 
-      {/* MODAL : MODIFICATION DE COURS */}
       {editCourseData && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-xl space-y-6">
-            <div className="flex justify-between items-center">
-              <h3 className="text-xl font-bold text-gray-900">Modifier le cours</h3>
-              <button onClick={() => setEditCourseData(null)} className="text-gray-400 hover:text-gray-600 font-bold cursor-pointer">✕</button>
-            </div>
-
-            <form onSubmit={handleUpdateCourseSubmit} className="space-y-4">
-              <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-gray-600 mb-1">Titre</label>
-                <input type="text" value={editCourseData.titre} onChange={(e) => setEditCourseData({...editCourseData, titre: e.target.value})} required className="w-full px-4 py-2.5 bg-gray-50 border rounded-xl text-sm" />
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-gray-600 mb-1">Description</label>
-                <textarea value={editCourseData.description} onChange={(e) => setEditCourseData({...editCourseData, description: e.target.value})} required rows={3} className="w-full px-4 py-2.5 bg-gray-50 border rounded-xl text-sm" />
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-gray-600 mb-1">Catégorie</label>
-                <select value={editCourseData.id_categorie} onChange={(e) => setEditCourseData({...editCourseData, id_categorie: Number(e.target.value)})} className="w-full px-4 py-2.5 bg-gray-50 border rounded-xl text-sm">
-                  {categories.map((cat) => (
-                    <option key={cat.id_categorie} value={cat.id_categorie}>{cat.nom}</option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="flex items-center space-x-2">
-                <input type="checkbox" id="editpub" checked={editCourseData.est_publie} onChange={(e) => setEditCourseData({...editCourseData, est_publie: e.target.checked})} className="w-4 h-4 text-indigo-600 rounded" />
-                <label htmlFor="editpub" className="text-sm font-semibold text-gray-700">Publié</label>
-              </div>
-
-              <div className="flex space-x-3 pt-2">
-                <button type="button" onClick={() => setEditCourseData(null)} className="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-700 py-2.5 rounded-xl text-sm font-medium cursor-pointer">Annuler</button>
-                <button type="submit" className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white py-2.5 rounded-xl text-sm font-medium shadow-sm cursor-pointer">Enregistrer</button>
-              </div>
-            </form>
-          </div>
-        </div>
+        <CourseFormModal
+          categories={categories}
+          courseToEdit={editCourseData}
+          onClose={() => setEditCourseData(null)}
+          onSaved={fetchData}
+        />
       )}
 
-      {/* MODAL : UPLOAD RESSOURCE */}
       {selectedCourseForRes && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-xl space-y-6">
-            <div className="flex justify-between items-center">
-              <h3 className="text-lg font-bold text-gray-900">Ajouter une ressource</h3>
-              <button onClick={() => setSelectedCourseForRes(null)} className="text-gray-400 hover:text-gray-600 font-bold cursor-pointer">✕</button>
-            </div>
-
-            <form onSubmit={handleUploadResSubmit} className="space-y-4">
-              <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-gray-600 mb-1">Nom du fichier / support</label>
-                <input type="text" value={resName} onChange={(e) => setResName(e.target.value)} placeholder="ex: Chapitre 1 - PDF" required className="w-full px-4 py-2.5 bg-gray-50 border rounded-xl text-sm" />
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-gray-600 mb-1">Type de ressource</label>
-                <select value={resType} onChange={(e) => setResType(e.target.value)} className="w-full px-4 py-2.5 bg-gray-50 border rounded-xl text-sm">
-                  <option value="pdf">PDF</option>
-                  <option value="video">Vidéo</option>
-                  <option value="image">Image</option>
-                  <option value="text">Texte</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-gray-600 mb-1">Chemin ou URL du fichier</label>
-                <input type="text" value={resPath} onChange={(e) => setResPath(e.target.value)} placeholder="/uploads/cours/1/support.pdf" required className="w-full px-4 py-2.5 bg-gray-50 border rounded-xl text-sm" />
-              </div>
-
-              <div className="flex space-x-3 pt-2">
-                <button type="button" onClick={() => setSelectedCourseForRes(null)} className="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-700 py-2.5 rounded-xl text-sm font-medium cursor-pointer">Annuler</button>
-                <button type="submit" className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white py-2.5 rounded-xl text-sm font-medium shadow-sm cursor-pointer">Uploader</button>
-              </div>
-            </form>
-          </div>
-        </div>
+        <ResourceUploadModal
+          course={selectedCourseForRes}
+          onClose={() => setSelectedCourseForRes(null)}
+          onUploaded={fetchData}
+        />
       )}
 
-      {/* MODAL : CREATION D'EVALUATION */}
       {selectedCourseForEval && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-xl space-y-6">
-            <div className="flex justify-between items-center">
-              <h3 className="text-lg font-bold text-gray-900">Créer une évaluation</h3>
-              <button onClick={() => setSelectedCourseForEval(null)} className="text-gray-400 hover:text-gray-600 font-bold cursor-pointer">✕</button>
-            </div>
+        <EvaluationCreateModal
+          course={selectedCourseForEval}
+          onClose={() => setSelectedCourseForEval(null)}
+          onCreated={handleEvaluationCreated}
+        />
+      )}
 
-            <form onSubmit={handleCreateEvalSubmit} className="space-y-4">
-              <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-gray-600 mb-1">Titre de l'évaluation</label>
-                <input type="text" value={evalTitle} onChange={(e) => setEvalTitle(e.target.value)} placeholder="ex: Projet Final - API Go" required className="w-full px-4 py-2.5 bg-gray-50 border rounded-xl text-sm" />
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-gray-600 mb-1">Instructions détaillées</label>
-                <textarea value={evalInstructions} onChange={(e) => setEvalInstructions(e.target.value)} placeholder="Consignes de l'évaluation..." required rows={3} className="w-full px-4 py-2.5 bg-gray-50 border rounded-xl text-sm" />
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-gray-600 mb-1">Barème (ex: 20)</label>
-                <input type="number" value={evalBareme} onChange={(e) => setEvalBareme(Number(e.target.value))} required className="w-full px-4 py-2.5 bg-gray-50 border rounded-xl text-sm" />
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-bold uppercase tracking-wider text-gray-600 mb-1">Date d'ouverture</label>
-                  <input type="date" value={evalOpen} onChange={(e) => setEvalOpen(e.target.value)} required className="w-full px-4 py-2.5 bg-gray-50 border rounded-xl text-sm" />
-                </div>
-                <div>
-                  <label className="block text-xs font-bold uppercase tracking-wider text-gray-600 mb-1">Date de clôture</label>
-                  <input type="date" value={evalClose} onChange={(e) => setEvalClose(e.target.value)} required className="w-full px-4 py-2.5 bg-gray-50 border rounded-xl text-sm" />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-gray-600 mb-1">Nom du fichier joint (optionnel)</label>
-                <input 
-                  type="text" 
-                  value={evalNomFichier} 
-                  onChange={(e) => setEvalNomFichier(e.target.value)} 
-                  placeholder="ex: Enonce_TP1.pdf" 
-                  className="w-full px-4 py-2.5 bg-gray-50 border rounded-xl text-sm" 
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-gray-600 mb-1">Chemin ou URL du fichier joint (optionnel)</label>
-                <input 
-                  type="text" 
-                  value={evalCheminFichier} 
-                  onChange={(e) => setEvalCheminFichier(e.target.value)} 
-                  placeholder="/uploads/evaluations/enonce.pdf" 
-                  className="w-full px-4 py-2.5 bg-gray-50 border rounded-xl text-sm" 
-                />
-              </div>
-
-              <div className="flex space-x-3 pt-2">
-                <button type="button" onClick={() => setSelectedCourseForEval(null)} className="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-700 py-2.5 rounded-xl text-sm font-medium cursor-pointer">Annuler</button>
-                <button type="submit" className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white py-2.5 rounded-xl text-sm font-medium shadow-sm cursor-pointer">Créer</button>
-              </div>
-            </form>
-          </div>
-        </div>
+      {quizTargetEval && (
+        <QuizBuilderModal
+          evaluation={quizTargetEval}
+          initialQuestions={quizInitialQuestions}
+          onClose={() => setQuizTargetEval(null)}
+          onSave={async (questions) => {
+            try {
+              await saveEvaluationQuiz(quizTargetEval.id_evaluation, questions);
+              success('Questions du quiz enregistrées !');
+              await fetchData();
+            } catch {
+              showError("Erreur lors de l'enregistrement des questions du quiz.");
+            }
+          }}
+        />
       )}
     </div>
   );

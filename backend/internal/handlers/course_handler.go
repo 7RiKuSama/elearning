@@ -1,8 +1,10 @@
+// File: internal/handlers/course_handler.go
 package handlers
 
 import (
 	"net/http"
 	"strconv"
+	"time"
 
 	"pfel-elearning/internal/models"
 	"pfel-elearning/internal/repository"
@@ -15,40 +17,55 @@ type CourseHandler struct {
 	CourseRepo *repository.CourseRepository
 }
 
+type coursePayload struct {
+	Titre             string `json:"titre" binding:"required"`
+	Description       string `json:"description" binding:"required"`
+	EstPublie         bool   `json:"est_publie"`
+	IDCategorie       int    `json:"id_categorie" binding:"required"`
+	CoverURL          string `json:"cover_url"`
+	EstimatedDuration string `json:"estimated_duration"`
+	DifficultyLevel   string `json:"difficulty_level"`
+	Prerequisites     string `json:"prerequisites"`
+}
+
 func (h *CourseHandler) CreateCourse(c *gin.Context) {
-	// 1. Get the user ID from the JWT context middleware
 	userIDVal, exists := c.Get("user_id")
 	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
-		return
+		userIDVal, exists = c.Get("userID")
+		if !exists {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+			return
+		}
 	}
 
-	// 2. Parse the string user ID into a uuid.UUID to match models.Cours
 	teacherUUID, err := uuid.Parse(userIDVal.(string))
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid user identifier"})
 		return
 	}
 
-	var req struct {
-		Titre       string `json:"titre" binding:"required"`
-		Description string `json:"description" binding:"required"`
-		EstPublie   bool   `json:"est_publie"`
-		IDCategorie int    `json:"id_categorie" binding:"required"`
-	}
-
+	var req coursePayload
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
-	// 3. Build the course object, auto-assigning the creator as the teacher
+	difficulty := req.DifficultyLevel
+	if difficulty == "" {
+		difficulty = "Beginner"
+	}
+
 	course := models.Cours{
-		Titre:        req.Titre,
-		Description:  req.Description,
-		EstPublie:    req.EstPublie,
-		IDCategorie:  req.IDCategorie,
-		IDEnseignant: teacherUUID,
+		Titre:             req.Titre,
+		Description:       req.Description,
+		EstPublie:         req.EstPublie,
+		DateCreation:      time.Now(),
+		IDCategorie:       req.IDCategorie,
+		IDEnseignant:      teacherUUID,
+		CoverURL:          req.CoverURL,
+		EstimatedDuration: req.EstimatedDuration,
+		DifficultyLevel:   difficulty,
+		Prerequisites:     req.Prerequisites,
 	}
 
 	if err := h.CourseRepo.CreateCourse(c.Request.Context(), &course); err != nil {
@@ -70,32 +87,42 @@ func (h *CourseHandler) ListCatalog(c *gin.Context) {
 }
 
 func (h *CourseHandler) UpdateCourse(c *gin.Context) {
-    idStr := c.Param("id")
-    id, err := strconv.Atoi(idStr)
-    if err != nil {
-        c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid course ID"})
-        return
-    }
+	idStr := c.Param("id")
+	id, err := strconv.Atoi(idStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid course ID"})
+		return
+	}
 
-    var req struct {
-        Titre       string `json:"titre" binding:"required"`
-        Description string `json:"description" binding:"required"`
-        EstPublie   bool   `json:"est_publie"`
-        IDCategorie int    `json:"id_categorie" binding:"required"`
-    }
+	var req coursePayload
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
 
-    if err := c.ShouldBindJSON(&req); err != nil {
-        c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-        return
-    }
+	difficulty := req.DifficultyLevel
+	if difficulty == "" {
+		difficulty = "Beginner"
+	}
 
-    err = h.CourseRepo.UpdateCourse(c.Request.Context(), id, req.Titre, req.Description, req.EstPublie, req.IDCategorie)
-    if err != nil {
-        c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update course"})
-        return
-    }
+	course := &models.Cours{
+		IDCours:           id,
+		Titre:             req.Titre,
+		Description:       req.Description,
+		EstPublie:         req.EstPublie,
+		IDCategorie:       req.IDCategorie,
+		CoverURL:          req.CoverURL,
+		EstimatedDuration: req.EstimatedDuration,
+		DifficultyLevel:   difficulty,
+		Prerequisites:     req.Prerequisites,
+	}
 
-    c.JSON(http.StatusOK, gin.H{"message": "Course updated successfully"})
+	if err := h.CourseRepo.UpdateCourse(c.Request.Context(), course); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update course"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Course updated successfully"})
 }
 
 func (h *CourseHandler) AssignTeacher(c *gin.Context) {

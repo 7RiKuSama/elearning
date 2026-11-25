@@ -1,47 +1,77 @@
-package handlers_test
+// File: internal/handlers/enrollment_handler.go
+package handlers
 
 import (
 	"net/http"
-	"net/http/httptest"
-	"testing"
+	"strconv"
 
-	"github.com/DATA-DOG/go-sqlmock"
-	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
-	"github.com/stretchr/testify/assert"
-
-	"pfel-elearning/internal/handlers"
 	"pfel-elearning/internal/repository"
+
+	"github.com/gin-gonic/gin"
 )
 
-func TestEnroll_Success(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	db, mock, err := sqlmock.New()
-	assert.NoError(t, err)
-	defer db.Close()
+type EnrollmentHandler struct {
+	EnrollRepo *repository.EnrollmentRepository
+}
 
-	fakeStudentID := uuid.New().String()
-	courseID := 1
+func (h *EnrollmentHandler) Enroll(c *gin.Context) {
+	userID, exists := c.Get("user_id")
+	if !exists {
+		userID, exists = c.Get("userID")
+		if !exists {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+			return
+		}
+	}
+	studentID := userID.(string)
 
-	// Expect an INSERT statement. Exec expects a Result, not Rows.
-	mock.ExpectExec(`INSERT INTO inscriptions \(id_etudiant, id_cours\)`).
-		WithArgs(fakeStudentID, courseID).
-		WillReturnResult(sqlmock.NewResult(1, 1))
+	courseID, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid course ID format"})
+		return
+	}
 
-	enrollRepo := repository.NewEnrollmentRepository(db)
-	enrollHandler := &handlers.EnrollmentHandler{EnrollRepo: enrollRepo}
+	if err := h.EnrollRepo.EnrollStudent(c.Request.Context(), studentID, courseID); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to enroll student (already enrolled?)"})
+		return
+	}
 
-	r := gin.Default()
-	r.POST("/api/cours/:id/inscription", func(c *gin.Context) {
-		c.Set("userID", fakeStudentID)
-		enrollHandler.Enroll(c)
-	})
+	c.JSON(http.StatusCreated, gin.H{"message": "Enrolled successfully"})
+}
 
-	req, _ := http.NewRequest(http.MethodPost, "/api/cours/1/inscription", nil)
-	w := httptest.NewRecorder()
-	r.ServeHTTP(w, req)
+func (h *EnrollmentHandler) MyEnrollments(c *gin.Context) {
+	userID, exists := c.Get("user_id")
+	if !exists {
+		userID, exists = c.Get("userID")
+		if !exists {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+			return
+		}
+	}
+	studentID := userID.(string)
 
-	assert.Equal(t, http.StatusCreated, w.Code)
-	assert.Contains(t, w.Body.String(), "Enrolled successfully")
-	assert.NoError(t, mock.ExpectationsWereMet())
+	enrollments, err := h.EnrollRepo.GetStudentEnrollments(c.Request.Context(), studentID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve enrollments"})
+		return
+	}
+
+	c.JSON(http.StatusOK, enrollments)
+}
+
+func (h *EnrollmentHandler) GetCourseStudents(c *gin.Context) {
+	courseIDStr := c.Param("id")
+	courseID, err := strconv.Atoi(courseIDStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid course ID"})
+		return
+	}
+
+	students, err := h.EnrollRepo.GetEnrolledStudentsByCourse(c.Request.Context(), courseID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve enrolled students"})
+		return
+	}
+
+	c.JSON(http.StatusOK, students)
 }

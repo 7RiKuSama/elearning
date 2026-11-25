@@ -1,168 +1,245 @@
+// File: internal/repository/evaluation_repo.go
 package repository
 
 import (
-	"context"
 	"database/sql"
 	"time"
+
 	"pfel-elearning/internal/models"
 )
 
 type EvaluationRepository struct {
-	db *sql.DB
+	DB *sql.DB
 }
 
 func NewEvaluationRepository(db *sql.DB) *EvaluationRepository {
-	return &EvaluationRepository{db: db}
+	return &EvaluationRepository{DB: db}
 }
 
-func (r *EvaluationRepository) GetEvaluationsByCourse(ctx context.Context, courseID int) ([]models.Evaluation, error) {
+func (r *EvaluationRepository) Create(ev *models.Evaluation) error {
+	if ev.TypeEvaluation == "" {
+		ev.TypeEvaluation = "file"
+	}
+
 	query := `
-		SELECT id_evaluation, id_cours, titre, instructions, bareme, date_ouverture, date_cloture, nom_fichier, chemin_fichier 
-		FROM evaluations 
-		WHERE id_cours = $1
+		INSERT INTO evaluations (
+			id_cours, titre, instructions, bareme, type_evaluation, passing_score,
+			date_ouverture, date_cloture, nom_fichier, chemin_fichier
+		)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+		RETURNING id_evaluation, COALESCE(type_evaluation, 'file')
 	`
-	rows, err := r.db.QueryContext(ctx, query, courseID)
+	return r.DB.QueryRow(
+		query,
+		ev.IDCours,
+		ev.Titre,
+		ev.Instructions,
+		ev.Bareme,
+		ev.TypeEvaluation,
+		ev.PassingScore,
+		ev.DateOuverture,
+		ev.DateCloture,
+		ev.NomFichier,
+		ev.CheminFichier,
+	).Scan(&ev.IDEvaluation, &ev.TypeEvaluation)
+}
+
+func (r *EvaluationRepository) ListByCourse(courseID int) ([]models.Evaluation, error) {
+	query := `
+		SELECT
+			id_evaluation,
+			id_cours,
+			titre,
+			instructions,
+			bareme,
+			COALESCE(type_evaluation, 'file'),
+			passing_score,
+			date_ouverture,
+			date_cloture,
+			COALESCE(nom_fichier, ''),
+			COALESCE(chemin_fichier, '')
+		FROM evaluations
+		WHERE id_cours = $1
+		ORDER BY id_evaluation ASC
+	`
+	rows, err := r.DB.Query(query, courseID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 
-	var evals []models.Evaluation
+	list := make([]models.Evaluation, 0)
 	for rows.Next() {
 		var ev models.Evaluation
-		var nomFichier, cheminFichier sql.NullString
-
+		var passing sql.NullFloat64
 		if err := rows.Scan(
-			&ev.IDEvaluation, 
-			&ev.IDCours, 
-			&ev.Titre, 
-			&ev.Instructions, 
-			&ev.Bareme, 
-			&ev.DateOuverture, 
-			&ev.DateCloture, 
-			&nomFichier, 
-			&cheminFichier,
+			&ev.IDEvaluation,
+			&ev.IDCours,
+			&ev.Titre,
+			&ev.Instructions,
+			&ev.Bareme,
+			&ev.TypeEvaluation,
+			&passing,
+			&ev.DateOuverture,
+			&ev.DateCloture,
+			&ev.NomFichier,
+			&ev.CheminFichier,
 		); err != nil {
 			return nil, err
 		}
-
-		if nomFichier.Valid {
-			ev.NomFichier = nomFichier.String
+		if passing.Valid {
+			val := passing.Float64
+			ev.PassingScore = &val
 		}
-		if cheminFichier.Valid {
-			ev.CheminFichier = cheminFichier.String
-		}
-
-		evals = append(evals, ev)
+		list = append(list, ev)
 	}
-	return evals, nil
+	return list, rows.Err()
 }
 
-func (r *EvaluationRepository) GetSubmissionsByEvaluation(ctx context.Context, evalID int) ([]models.Soumission, error) {
-	query := `SELECT id_soumission, id_evaluation, id_etudiant, fichier_soumis, note_obtenue, commentaire_professeur, date_envoi FROM soumissions WHERE id_evaluation = $1`
-	rows, err := r.db.QueryContext(ctx, query, evalID)
+func (r *EvaluationRepository) UpsertSubmission(evalID int, studentID string, filePath string) (*models.Submission, error) {
+	query := `
+		INSERT INTO soumissions (id_evaluation, id_etudiant, fichier_soumis, date_envoi)
+		VALUES ($1, $2, $3, NOW())
+		ON CONFLICT (id_evaluation, id_etudiant)
+		DO UPDATE SET fichier_soumis = EXCLUDED.fichier_soumis, date_envoi = NOW()
+		RETURNING id_soumission, id_evaluation, id_etudiant::text, COALESCE(fichier_soumis, ''), note_obtenue, COALESCE(commentaire_professeur, ''), date_envoi
+	`
+	var sub models.Submission
+	var note sql.NullFloat64
+	var sentAt sql.NullTime
+	err := r.DB.QueryRow(query, evalID, studentID, filePath).Scan(
+		&sub.IDSoumission,
+		&sub.IDEvaluation,
+		&sub.IDStudent,
+		&sub.FichierSoumis,
+		&note,
+		&sub.Commentaires,
+		&sentAt,
+	)
+	if err != nil {
+		return nil, err
+	}
+	if note.Valid {
+		val := note.Float64
+		sub.Note = &val
+	}
+	if sentAt.Valid {
+		sub.DateSoumission = sentAt.Time
+	} else {
+		sub.DateSoumission = time.Now()
+	}
+	return &sub, nil
+}
+
+func (r *EvaluationRepository) ListSubmissionsByEvaluation(evalID int) ([]models.Submission, error) {
+	query := `
+		SELECT
+			id_soumission,
+			id_evaluation,
+			id_etudiant::text,
+			COALESCE(fichier_soumis, ''),
+			note_obtenue,
+			COALESCE(commentaire_professeur, ''),
+			date_envoi
+		FROM soumissions
+		WHERE id_evaluation = $1
+		ORDER BY date_envoi DESC NULLS LAST, id_soumission DESC
+	`
+	rows, err := r.DB.Query(query, evalID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 
-	var subs []models.Soumission
+	list := make([]models.Submission, 0)
 	for rows.Next() {
-		var s models.Soumission
-		if err := rows.Scan(&s.IDSoumission, &s.IDEvaluation, &s.IDEtudiant, &s.FichierSoumis, &s.NoteObtenue, &s.CommentaireProfesseur, &s.DateEnvoi); err != nil {
+		var sub models.Submission
+		var note sql.NullFloat64
+		var sentAt sql.NullTime
+		if err := rows.Scan(
+			&sub.IDSoumission,
+			&sub.IDEvaluation,
+			&sub.IDStudent,
+			&sub.FichierSoumis,
+			&note,
+			&sub.Commentaires,
+			&sentAt,
+		); err != nil {
 			return nil, err
 		}
-		subs = append(subs, s)
+		if note.Valid {
+			val := note.Float64
+			sub.Note = &val
+		}
+		if sentAt.Valid {
+			sub.DateSoumission = sentAt.Time
+		}
+		list = append(list, sub)
 	}
-	return subs, nil
+	return list, rows.Err()
 }
 
-func (r *EvaluationRepository) GradeSubmission(ctx context.Context, submissionID int, note float64, commentaires string) error {
-	query := `UPDATE soumissions SET note_obtenue = $1, commentaire_professeur = $2 WHERE id_soumission = $3`
-	_, err := r.db.ExecContext(ctx, query, note, commentaires, submissionID)
+func (r *EvaluationRepository) GradeSubmission(subID int, note float64, comments string) error {
+	query := `
+		UPDATE soumissions
+		SET note_obtenue = $1, commentaire_professeur = $2
+		WHERE id_soumission = $3
+	`
+	_, err := r.DB.Exec(query, note, comments, subID)
 	return err
 }
 
-func (r *EvaluationRepository) GetStudentGrades(ctx context.Context, studentID string) ([]map[string]interface{}, error) {
+func (r *EvaluationRepository) GetStudentGrades(studentID string) ([]models.Submission, error) {
 	query := `
-		SELECT s.id_soumission, s.note_obtenue, s.commentaire_professeur, s.date_envoi, 
-			   e.id_evaluation, e.titre AS eval_titre, e.bareme, c.titre AS cours_titre
+		SELECT
+			s.id_soumission,
+			s.id_evaluation,
+			s.id_etudiant::text,
+			COALESCE(s.fichier_soumis, ''),
+			s.note_obtenue,
+			COALESCE(s.commentaire_professeur, ''),
+			s.date_envoi,
+			COALESCE(e.titre, ''),
+			COALESCE(e.bareme::float8, 20::float8),
+			COALESCE(e.type_evaluation, 'file')
 		FROM soumissions s
-		JOIN evaluations e ON s.id_evaluation = e.id_evaluation
-		JOIN cours c ON e.id_cours = c.id_cours
-		WHERE s.id_etudiant = $1
+		LEFT JOIN evaluations e ON e.id_evaluation = s.id_evaluation
+		WHERE s.id_etudiant::text = $1
+		ORDER BY s.date_envoi DESC NULLS LAST, s.id_soumission DESC
 	`
-	rows, err := r.db.QueryContext(ctx, query, studentID)
+	rows, err := r.DB.Query(query, studentID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 
-	var results []map[string]interface{}
+	list := make([]models.Submission, 0)
 	for rows.Next() {
-		var idSoumission int
-		var note *float64
-		var commentaires string
-		var dateSoumission time.Time
-		var idEvaluation int
-		var evalTitre string
-		var bareme float64
-		var coursTitre string
-
-		if err := rows.Scan(&idSoumission, &note, &commentaires, &dateSoumission, &idEvaluation, &evalTitre, &bareme, &coursTitre); err != nil {
+		var sub models.Submission
+		var note sql.NullFloat64
+		var sentAt sql.NullTime
+		if err := rows.Scan(
+			&sub.IDSoumission,
+			&sub.IDEvaluation,
+			&sub.IDStudent,
+			&sub.FichierSoumis,
+			&note,
+			&sub.Commentaires,
+			&sentAt,
+			&sub.TitreEval,
+			&sub.BaremeEval,
+			&sub.TypeEval,
+		); err != nil {
 			return nil, err
 		}
-
-		results = append(results, map[string]interface{}{
-			"id_soumission":   idSoumission,
-			"id_evaluation":   idEvaluation,
-			"eval_titre":      evalTitre,
-			"cours_titre":     coursTitre,
-			"bareme":          bareme,
-			"note":            note,
-			"commentaires":    commentaires,
-			"date_soumission": dateSoumission,
-		})
+		if note.Valid {
+			val := note.Float64
+			sub.Note = &val
+		}
+		if sentAt.Valid {
+			sub.DateSoumission = sentAt.Time
+		}
+		list = append(list, sub)
 	}
-	return results, nil
-}
-
-func (r *EvaluationRepository) CreateEvaluation(ctx context.Context, eval *models.Evaluation) error {
-	query := `
-		INSERT INTO evaluations (id_cours, titre, instructions, bareme, date_ouverture, date_cloture, nom_fichier, chemin_fichier)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-		RETURNING id_evaluation
-	`
-	var nomFichier, cheminFichier interface{} = nil, nil
-	if eval.NomFichier != "" {
-		nomFichier = eval.NomFichier
-	}
-	if eval.CheminFichier != "" {
-		cheminFichier = eval.CheminFichier
-	}
-
-	return r.db.QueryRowContext(ctx, query,
-		eval.IDCours,
-		eval.Titre,
-		eval.Instructions,
-		eval.Bareme,
-		eval.DateOuverture,
-		eval.DateCloture,
-		nomFichier,
-		cheminFichier,
-	).Scan(&eval.IDEvaluation)
-}
-
-func (r *EvaluationRepository) SubmitWork(ctx context.Context, sub *models.Soumission) error {
-	query := `
-		INSERT INTO soumissions (id_evaluation, id_etudiant, fichier_soumis, date_envoi)
-		VALUES ($1, $2, $3, $4)
-		RETURNING id_soumission
-	`
-	return r.db.QueryRowContext(ctx, query,
-		sub.IDEvaluation,
-		sub.IDEtudiant,
-		sub.FichierSoumis,
-		sub.DateEnvoi,
-	).Scan(&sub.IDSoumission)
+	return list, rows.Err()
 }

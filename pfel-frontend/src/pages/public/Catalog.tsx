@@ -1,20 +1,55 @@
 // File: src/pages/public/Catalog.tsx
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import gsap from 'gsap';
 import { getCatalog, getCategories, getMyEnrollments, enrollCourse } from '../../api/services';
 import type { Cours, Categorie, Inscription } from '../../types';
 import { useAuth } from '../../context/AuthContext';
-import { BookOpen, PlusCircle, CheckCircle, LogIn, UserPlus, ChevronDown, Folder, Search } from 'lucide-react';
+import { useToast } from '../../context/ToastContext';
+import { CrawlingPythonBg } from '../../components/ui/CrawlingPythonBg';
+import { CardSkeleton, Skeleton } from '../../components/ui/Skeleton';
+import {
+  BookOpen,
+  PlusCircle,
+  CheckCircle,
+  LogIn,
+  UserPlus,
+  ChevronDown,
+  Folder,
+  Search,
+  Clock,
+  GraduationCap,
+  ListChecks,
+  Sparkles,
+  Layers,
+  Award,
+  RotateCcw,
+  ArrowUpRight,
+} from 'lucide-react';
 import { Link } from 'react-router-dom';
+
+const DIFFICULTY_STYLES: Record<string, string> = {
+  Beginner: 'bg-[var(--success-bg)] text-[var(--success-text)] border-[var(--success-border)]',
+  Intermediate: 'bg-[var(--warning-bg)] text-[var(--warning-text)] border-[var(--warning-border)]',
+  Advanced: 'bg-[var(--danger-bg)] text-[var(--danger-text)] border-[var(--danger-border)]',
+};
 
 export default function Catalog() {
   const [courses, setCourses] = useState<Cours[]>([]);
   const [categories, setCategories] = useState<Categorie[]>([]);
   const [enrolledIds, setEnrolledIds] = useState<Set<number>>(new Set());
   const [searchQuery, setSearchQuery] = useState('');
+  const [difficultyFilter, setDifficultyFilter] = useState<string>('ALL');
+  const [selectedCategoryId, setSelectedCategoryId] = useState<number | 'ALL'>('ALL');
   const [loading, setLoading] = useState(true);
+  const [enrollingId, setEnrollingId] = useState<number | null>(null);
   const { token, role } = useAuth();
+  const { success, error: showError } = useToast();
 
   const [openCategories, setOpenCategories] = useState<Record<number, boolean>>({});
+
+  const pageRef = useRef<HTMLDivElement | null>(null);
+  const heroRef = useRef<HTMLElement | null>(null);
+  const glowRef = useRef<HTMLDivElement | null>(null);
 
   const fetchData = async () => {
     try {
@@ -29,13 +64,14 @@ export default function Catalog() {
       });
       setOpenCategories(initialOpen);
 
-      if (token && role === 'etudiant') {
+      if (token && (role === 'etudiant' || role === 'ETUDIANT')) {
         const enrollments = await getMyEnrollments();
         const ids = new Set((enrollments || []).map((e: Inscription) => e.id_cours));
         setEnrolledIds(ids);
       }
     } catch (err) {
       console.error(err);
+      showError('Impossible de charger le catalogue des cours.');
     } finally {
       setLoading(false);
     }
@@ -50,149 +86,505 @@ export default function Catalog() {
   };
 
   const handleEnroll = async (id: number) => {
+    setEnrollingId(id);
     try {
       await enrollCourse(id);
       setEnrolledIds((prev) => new Set(prev).add(id));
-      alert('Inscription réussie ! Le cours apparaît désormais comme inscrit.');
-    } catch (err) {
-      alert("Erreur lors de l'inscription");
+      success('Inscription confirmée ! Vous pouvez désormais suivre ce cours.', 'Inscription réussie');
+    } catch {
+      showError("Erreur lors de l'inscription au cours.");
+    } finally {
+      setEnrollingId(null);
     }
   };
 
-  // Filter courses in real-time based on title or description
-  const filteredCourses = courses.filter((course) =>
-    course.titre.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    course.description.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const resetFilters = () => {
+    setSearchQuery('');
+    setDifficultyFilter('ALL');
+    setSelectedCategoryId('ALL');
+  };
 
-  if (loading) return <div className="text-center mt-12 text-gray-500 font-medium">Chargement du catalogue...</div>;
+  const filteredCourses = useMemo(() => {
+    return courses.filter((course) => {
+      const q = searchQuery.toLowerCase().trim();
+      const matchesQuery =
+        !q ||
+        course.titre.toLowerCase().includes(q) ||
+        course.description.toLowerCase().includes(q) ||
+        (course.prerequisites || '').toLowerCase().includes(q);
+
+      const level = course.difficulty_level || 'Beginner';
+      const matchesDifficulty = difficultyFilter === 'ALL' || level === difficultyFilter;
+      const matchesCategory =
+        selectedCategoryId === 'ALL' || course.id_categorie === selectedCategoryId;
+
+      return matchesQuery && matchesDifficulty && matchesCategory;
+    });
+  }, [courses, searchQuery, difficultyFilter, selectedCategoryId]);
+
+  const hasActiveFilters =
+    Boolean(searchQuery.trim()) || difficultyFilter !== 'ALL' || selectedCategoryId !== 'ALL';
+
+  useEffect(() => {
+    if (loading || !pageRef.current) return;
+
+    const ctx = gsap.context(() => {
+      gsap.from('.gsap-hero-item', {
+        y: 22,
+        opacity: 0,
+        duration: 0.7,
+        stagger: 0.08,
+        ease: 'power3.out',
+        clearProps: 'transform,opacity',
+      });
+
+      gsap.from('.gsap-stat-card', {
+        y: 18,
+        opacity: 0,
+        duration: 0.6,
+        stagger: 0.09,
+        delay: 0.2,
+        ease: 'power2.out',
+        clearProps: 'transform,opacity',
+      });
+
+      gsap.from('.gsap-course-card', {
+        y: 24,
+        opacity: 0,
+        scale: 0.98,
+        duration: 0.55,
+        stagger: { amount: 0.35, from: 'start' },
+        delay: 0.25,
+        ease: 'power2.out',
+        clearProps: 'transform,opacity',
+      });
+
+      if (glowRef.current) {
+        gsap.to(glowRef.current, {
+          scale: 1.12,
+          opacity: 0.65,
+          duration: 3.6,
+          repeat: -1,
+          yoyo: true,
+          ease: 'sine.inOut',
+        });
+      }
+    }, pageRef);
+
+    return () => ctx.revert();
+  }, [loading, selectedCategoryId, difficultyFilter, searchQuery]);
+
+  useEffect(() => {
+    if (loading || !heroRef.current || !glowRef.current) return;
+
+    const heroEl = heroRef.current;
+    const xTo = gsap.quickTo(glowRef.current, 'x', { duration: 0.6, ease: 'power3.out' });
+    const yTo = gsap.quickTo(glowRef.current, 'y', { duration: 0.6, ease: 'power3.out' });
+
+    const onMove = (e: MouseEvent) => {
+      const rect = heroEl.getBoundingClientRect();
+      const relX = e.clientX - (rect.left + rect.width / 2);
+      const relY = e.clientY - (rect.top + rect.height / 2);
+      xTo(relX * 0.28);
+      yTo(relY * 0.22);
+    };
+
+    const onLeave = () => {
+      xTo(0);
+      yTo(0);
+    };
+
+    heroEl.addEventListener('mousemove', onMove);
+    heroEl.addEventListener('mouseleave', onLeave);
+    return () => {
+      heroEl.removeEventListener('mousemove', onMove);
+      heroEl.removeEventListener('mouseleave', onLeave);
+    };
+  }, [loading]);
+
+  if (loading) {
+    return (
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 py-12 space-y-8">
+        <div className="max-w-2xl mx-auto space-y-4 text-center">
+          <Skeleton className="h-6 w-44 rounded-full mx-auto" />
+          <Skeleton className="h-11 w-4/5 mx-auto" />
+          <Skeleton className="h-5 w-2/3 mx-auto" />
+          <Skeleton className="h-24 w-full rounded-2xl" />
+        </div>
+        <CardSkeleton count={3} />
+      </div>
+    );
+  }
 
   return (
-    <div className="space-y-8">
-      {/* Hero Section */}
-      <div className="bg-gradient-to-r from-indigo-600 to-violet-600 rounded-2xl p-8 text-white shadow-lg">
-        <h1 className="text-4xl font-extrabold tracking-tight mb-3">Plateforme PFE-Learn</h1>
-        <p className="text-indigo-100 text-lg max-w-2xl mb-6">
-          Découvrez et suivez vos cours académiques organisés par catégories.
+    <div ref={pageRef} className="relative z-10 max-w-6xl mx-auto px-4 sm:px-6 py-8 sm:py-12 space-y-10">
+      <CrawlingPythonBg />
+
+      {/* Interactive ambient aura */}
+      <div
+        ref={glowRef}
+        aria-hidden="true"
+        className="pointer-events-none fixed top-20 left-1/2 -translate-x-1/2 w-[740px] h-[300px] rounded-full bg-[var(--accent)]/15 blur-3xl -z-10"
+      />
+
+      {/* Hero & Search Composer */}
+      <section ref={heroRef} className="max-w-3xl mx-auto text-center space-y-5 pt-1">
+        <div className="gsap-hero-item inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-[var(--accent-soft)] border border-[var(--accent-border)] text-[var(--accent-text)] text-xs font-medium shadow-2xs">
+          <Sparkles className="w-3.5 h-3.5" />
+          <span>Espace d'apprentissage PFE-Learn</span>
+        </div>
+
+        <h1 className="gsap-hero-item font-editorial text-3xl sm:text-5xl text-[var(--text-primary)] tracking-tight leading-[1.12]">
+          What would you like to explore today?
+        </h1>
+
+        <p className="gsap-hero-item text-[var(--text-secondary)] text-sm sm:text-base max-w-xl mx-auto leading-relaxed">
+          Parcourez les cours organisés par matière, vérifiez les prérequis et suivez vos modules
+          à votre rythme.
         </p>
+
+        {/* Search & Filter Composer */}
+        <div className="gsap-hero-item surface-card rounded-2xl p-2.5 text-left transition-all duration-200 focus-within:border-[var(--accent)] focus-within:shadow-xl focus-within:shadow-[var(--accent)]/10">
+          <div className="flex items-center px-3 py-1.5 gap-2.5">
+            <Search className="w-4 h-4 text-[var(--text-muted)] shrink-0" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Rechercher un cours, un sujet ou un prérequis..."
+              className="w-full bg-transparent text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none"
+            />
+            {hasActiveFilters && (
+              <button
+                type="button"
+                onClick={resetFilters}
+                className="inline-flex items-center gap-1 text-xs font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] px-2 py-1 rounded-lg hover:bg-[var(--bg-subtle)] transition cursor-pointer shrink-0"
+              >
+                <RotateCcw className="w-3 h-3" />
+                <span>Réinitialiser</span>
+              </button>
+            )}
+          </div>
+
+          <div className="flex flex-wrap items-center justify-between gap-2 px-3 pt-2.5 pb-1 border-t border-[var(--border-subtle)] mt-1.5">
+            <div className="flex flex-wrap items-center gap-1.5 text-xs">
+              {[
+                { value: 'ALL', label: 'Tous niveaux' },
+                { value: 'Beginner', label: 'Beginner' },
+                { value: 'Intermediate', label: 'Intermediate' },
+                { value: 'Advanced', label: 'Advanced' },
+              ].map((opt) => {
+                const active = difficultyFilter === opt.value;
+                return (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    onClick={() => setDifficultyFilter(opt.value)}
+                    className={`px-3 py-1 rounded-full font-medium transition-all duration-150 cursor-pointer ${
+                      active
+                        ? 'bg-[var(--accent-soft)] text-[var(--accent-text)] border border-[var(--accent-border)] shadow-2xs'
+                        : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-subtle)] border border-transparent'
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                );
+              })}
+            </div>
+            <span className="text-xs text-[var(--text-muted)] tabular-nums">
+              {filteredCourses.length} cours disponible{filteredCourses.length > 1 ? 's' : ''}
+            </span>
+          </div>
+        </div>
+
+        {/* Category Quick Pills */}
+        {categories.length > 0 && (
+          <div className="gsap-hero-item flex flex-wrap items-center justify-center gap-2 pt-1">
+            <button
+              type="button"
+              onClick={() => setSelectedCategoryId('ALL')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-medium border transition-all cursor-pointer ${
+                selectedCategoryId === 'ALL'
+                  ? 'bg-[var(--bg-subtle)] text-[var(--text-primary)] border-[var(--border-strong)]'
+                  : 'bg-transparent text-[var(--text-secondary)] border-[var(--border-subtle)] hover:bg-[var(--bg-subtle)]/60'
+              }`}
+            >
+              Toutes les matières ({courses.length})
+            </button>
+            {categories.map((cat) => {
+              const active = selectedCategoryId === cat.id_categorie;
+              const count = courses.filter((c) => c.id_categorie === cat.id_categorie).length;
+              return (
+                <button
+                  key={cat.id_categorie}
+                  type="button"
+                  onClick={() => setSelectedCategoryId(active ? 'ALL' : cat.id_categorie)}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-medium border transition-all cursor-pointer ${
+                    active
+                      ? 'bg-[var(--accent-soft)] text-[var(--accent-text)] border-[var(--accent-border)]'
+                      : 'bg-transparent text-[var(--text-secondary)] border-[var(--border-subtle)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-subtle)]/60'
+                  }`}
+                >
+                  {cat.nom} ({count})
+                </button>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Guest Auth Actions */}
         {!token && (
-          <div className="flex space-x-4">
-            <Link to="/login" className="bg-white text-indigo-600 px-5 py-2.5 rounded-xl font-semibold hover:bg-indigo-50 transition shadow flex items-center space-x-2">
+          <div className="gsap-hero-item flex flex-wrap items-center justify-center gap-3 pt-1">
+            <Link
+              to="/login"
+              className="inline-flex items-center gap-2 btn-accent px-4 py-2.5 rounded-xl text-sm font-medium transition-transform hover:-translate-y-0.5"
+            >
               <LogIn className="w-4 h-4" />
               <span>Se connecter</span>
             </Link>
-            <Link to="/register" className="bg-indigo-700 text-white border border-indigo-400 px-5 py-2.5 rounded-xl font-semibold hover:bg-indigo-800 transition shadow flex items-center space-x-2">
+            <Link
+              to="/register"
+              className="inline-flex items-center gap-2 surface-card hover:bg-[var(--bg-subtle)] text-[var(--text-primary)] px-4 py-2.5 rounded-xl text-sm font-medium transition-all hover:-translate-y-0.5"
+            >
               <UserPlus className="w-4 h-4" />
               <span>Créer un compte</span>
             </Link>
           </div>
         )}
-      </div>
+      </section>
 
-      <div className="space-y-6">
-        {/* Search Bar Header */}
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <h2 className="text-2xl font-bold text-gray-900">Catalogue par Catégories</h2>
-          <div className="relative w-full md:w-80">
-            <Search className="absolute left-3.5 top-3 w-4 h-4 text-gray-400" />
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Rechercher un cours..."
-              className="w-full pl-10 pr-4 py-2 bg-white border border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:outline-none text-sm shadow-sm"
-            />
+      {/* Compact Platform Strip */}
+      <section className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
+        <div className="gsap-stat-card surface-card rounded-2xl px-4 py-3.5 flex items-center gap-3.5 transition-transform duration-200 hover:-translate-y-0.5">
+          <div className="w-10 h-10 rounded-xl bg-[var(--accent-soft)] border border-[var(--accent-border)] text-[var(--accent-text)] flex items-center justify-center shrink-0">
+            <BookOpen className="w-4 h-4" />
+          </div>
+          <div>
+            <p className="text-lg font-semibold text-[var(--text-primary)] tabular-nums leading-tight">
+              {courses.length}
+            </p>
+            <p className="text-xs text-[var(--text-muted)]">Cours publiés</p>
           </div>
         </div>
 
-        {categories.length === 0 ? (
-          <div className="bg-white p-8 rounded-2xl border border-gray-200 text-center shadow-sm max-w-xl mx-auto mt-12">
-            <BookOpen className="w-12 h-12 text-indigo-400 mx-auto mb-3" />
-            <h3 className="text-lg font-bold text-gray-800 mb-1">Aucune catégorie disponible</h3>
-            <p className="text-gray-500 text-sm mb-6">
-              Connectez-vous en tant qu'enseignant pour créer des catégories et publier des cours.
+        <div className="gsap-stat-card surface-card rounded-2xl px-4 py-3.5 flex items-center gap-3.5 transition-transform duration-200 hover:-translate-y-0.5">
+          <div className="w-10 h-10 rounded-xl bg-[var(--bg-subtle)] border border-[var(--border-subtle)] text-[var(--text-secondary)] flex items-center justify-center shrink-0">
+            <Layers className="w-4 h-4" />
+          </div>
+          <div>
+            <p className="text-lg font-semibold text-[var(--text-primary)] tabular-nums leading-tight">
+              {categories.length}
+            </p>
+            <p className="text-xs text-[var(--text-muted)]">Catégories thématiques</p>
+          </div>
+        </div>
+
+        <div className="gsap-stat-card surface-card rounded-2xl px-4 py-3.5 flex items-center gap-3.5 transition-transform duration-200 hover:-translate-y-0.5">
+          <div className="w-10 h-10 rounded-xl bg-[var(--success-bg)] border border-[var(--success-border)] text-[var(--success-text)] flex items-center justify-center shrink-0">
+            <Award className="w-4 h-4" />
+          </div>
+          <div>
+            <p className="text-lg font-semibold text-[var(--text-primary)] tabular-nums leading-tight">
+              {token && (role === 'etudiant' || role === 'ETUDIANT') ? enrolledIds.size : '100%'}
+            </p>
+            <p className="text-xs text-[var(--text-muted)]">
+              {token && (role === 'etudiant' || role === 'ETUDIANT')
+                ? 'Cours suivis'
+                : 'Parcours structurés'}
             </p>
           </div>
-        ) : (
-          <div className="space-y-6">
-            {categories.map((cat) => {
-              const catCourses = filteredCourses.filter((c) => c.id_categorie === cat.id_categorie);
+        </div>
+      </section>
+
+      {/* Categories & Course Cards */}
+      {categories.length === 0 ? (
+        <div className="surface-card p-10 rounded-2xl text-center max-w-md mx-auto space-y-2.5">
+          <BookOpen className="w-10 h-10 text-[var(--accent-text)] mx-auto" />
+          <h3 className="text-base font-semibold text-[var(--text-primary)]">
+            Aucune catégorie disponible
+          </h3>
+          <p className="text-sm text-[var(--text-secondary)]">
+            Connectez-vous en tant qu'enseignant pour créer des catégories et publier des cours.
+          </p>
+        </div>
+      ) : filteredCourses.length === 0 && hasActiveFilters ? (
+        <div className="surface-card p-10 rounded-2xl text-center max-w-md mx-auto space-y-3">
+          <Search className="w-9 h-9 text-[var(--text-muted)] mx-auto opacity-75" />
+          <h3 className="text-base font-semibold text-[var(--text-primary)]">
+            Aucun cours correspondant
+          </h3>
+          <p className="text-sm text-[var(--text-secondary)]">
+            Essayez un autre mot-clé ou réinitialisez vos filtres de niveau et de matière.
+          </p>
+          <button
+            type="button"
+            onClick={resetFilters}
+            className="inline-flex items-center gap-1.5 btn-accent px-4 py-2 rounded-xl text-xs font-medium cursor-pointer"
+          >
+            <RotateCcw className="w-3.5 h-3.5" />
+            <span>Réinitialiser les filtres</span>
+          </button>
+        </div>
+      ) : (
+        <div className="space-y-6">
+          {categories
+            .filter((cat) => selectedCategoryId === 'ALL' || cat.id_categorie === selectedCategoryId)
+            .map((cat) => {
+              const catCourses = filteredCourses.filter(
+                (c) => c.id_categorie === cat.id_categorie
+              );
               const isOpen = openCategories[cat.id_categorie] ?? true;
 
-              // Optional: Skip rendering empty categories if a search query is active and yields no results for this category
-              if (searchQuery && catCourses.length === 0) return null;
+              if (hasActiveFilters && catCourses.length === 0) {
+                return null;
+              }
 
               return (
-                <div key={cat.id_categorie} className="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden transition-all">
-                  {/* Category Header (Clickable Accordion) */}
+                <div
+                  key={cat.id_categorie}
+                  className="surface-card rounded-2xl overflow-hidden transition-shadow duration-200 hover:shadow-lg"
+                >
                   <button
+                    type="button"
                     onClick={() => toggleCategory(cat.id_categorie)}
-                    className="w-full flex items-center justify-between p-5 bg-gray-50 hover:bg-gray-100 transition-colors text-left cursor-pointer"
+                    className="w-full flex items-center justify-between px-6 py-4 bg-[var(--bg-subtle)]/60 hover:bg-[var(--bg-subtle)] transition text-left cursor-pointer"
                   >
-                    <div className="flex items-center space-x-3">
-                      <div className="p-2.5 bg-indigo-100 text-indigo-600 rounded-xl">
-                        <Folder className="w-6 h-6" />
+                    <div className="flex items-center gap-3.5">
+                      <div className="p-2.5 rounded-xl bg-[var(--accent-soft)] border border-[var(--accent-border)] text-[var(--accent-text)]">
+                        <Folder className="w-5 h-5" />
                       </div>
                       <div>
-                        <h3 className="text-xl font-bold text-gray-900">{cat.nom}</h3>
-                        <p className="text-sm text-gray-600">{cat.description || 'Aucune description'}</p>
+                        <h2 className="text-base font-semibold text-[var(--text-primary)]">
+                          {cat.nom}
+                        </h2>
+                        <p className="text-xs text-[var(--text-secondary)]">
+                          {cat.description || 'Aucune description'}
+                        </p>
                       </div>
                     </div>
-                    <div className="flex items-center space-x-3">
-                      <span className="text-xs font-semibold bg-indigo-50 text-indigo-700 px-3 py-1 rounded-full">
+                    <div className="flex items-center gap-3">
+                      <span className="text-xs font-medium bg-[var(--bg-surface)] text-[var(--text-secondary)] border border-[var(--border-subtle)] px-2.5 py-0.5 rounded-full tabular-nums">
                         {catCourses.length} cours
                       </span>
-                      <ChevronDown className={`w-5 h-5 text-gray-500 transition-transform duration-200 ${isOpen ? 'transform rotate-180' : ''}`} />
+                      <ChevronDown
+                        className={`w-4 h-4 text-[var(--text-muted)] transition-transform duration-200 ${
+                          isOpen ? 'rotate-180' : ''
+                        }`}
+                      />
                     </div>
                   </button>
 
-                  {/* Expandable Course List */}
                   {isOpen && (
-                    <div className="p-6 border-t border-gray-100">
+                    <div className="p-6 border-t border-[var(--border-subtle)]">
                       {catCourses.length === 0 ? (
-                        <p className="text-sm text-gray-500 italic py-2">Aucun cours disponible dans cette catégorie pour le moment.</p>
+                        <p className="text-sm text-[var(--text-muted)] italic">
+                          Aucun cours dans cette catégorie pour le moment.
+                        </p>
                       ) : (
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
                           {catCourses.map((course) => {
                             const isEnrolled = enrolledIds.has(course.id_cours);
+                            const level = course.difficulty_level || 'Beginner';
+                            const badgeClass =
+                              DIFFICULTY_STYLES[level] ||
+                              'bg-[var(--accent-soft)] text-[var(--accent-text)] border-[var(--accent-border)]';
 
                             return (
-                              <div key={course.id_cours} className="bg-gray-50 border border-gray-200/80 rounded-xl p-5 shadow-sm hover:shadow transition flex flex-col justify-between">
+                              <article
+                                key={course.id_cours}
+                                className="gsap-course-card group rounded-xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] hover:border-[var(--accent-border)] hover:-translate-y-1 hover:shadow-xl hover:shadow-black/20 transition-all duration-200 flex flex-col justify-between overflow-hidden"
+                              >
                                 <div>
-                                  <div className="flex items-center justify-between mb-2">
-                                    <div className="flex items-center space-x-2 text-indigo-600">
-                                      <BookOpen className="w-4 h-4" />
-                                      <span className="text-xs font-bold uppercase tracking-wider">Cours #{course.id_cours}</span>
-                                    </div>
+                                  <div className="relative h-40 w-full bg-[var(--bg-subtle)] border-b border-[var(--border-subtle)] overflow-hidden">
+                                    {course.cover_url ? (
+                                      <img
+                                        src={course.cover_url}
+                                        alt={course.titre}
+                                        className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                                      />
+                                    ) : (
+                                      <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-[var(--accent-soft)]/50 via-[var(--bg-subtle)] to-[var(--bg-surface)] text-[var(--accent-text)]">
+                                        <BookOpen className="w-9 h-9 opacity-80 transition-transform duration-300 group-hover:scale-110" />
+                                      </div>
+                                    )}
+
+                                    <span
+                                      className={`absolute top-2.5 left-2.5 inline-flex items-center gap-1 text-[11px] font-medium px-2.5 py-0.5 rounded-full border backdrop-blur-xs ${badgeClass}`}
+                                    >
+                                      <GraduationCap className="w-3 h-3" />
+                                      <span>{level}</span>
+                                    </span>
+
                                     {isEnrolled && (
-                                      <span className="inline-flex items-center space-x-1 text-xs font-semibold bg-green-50 text-green-700 px-2.5 py-1 rounded-full border border-green-200">
-                                        <CheckCircle className="w-3.5 h-3.5" />
+                                      <span className="absolute top-2.5 right-2.5 inline-flex items-center gap-1 text-[11px] font-medium bg-[var(--success-bg)] text-[var(--success-text)] border border-[var(--success-border)] px-2.5 py-0.5 rounded-full backdrop-blur-xs">
+                                        <CheckCircle className="w-3 h-3" />
                                         <span>Inscrit</span>
                                       </span>
                                     )}
                                   </div>
-                                  <h4 className="text-lg font-bold text-gray-900 mb-2">{course.titre}</h4>
-                                  <p className="text-gray-600 text-sm mb-4 leading-relaxed">{course.description}</p>
-                                </div>
-                                {token && role === 'etudiant' && (
-                                  <div>
-                                    {isEnrolled ? (
-                                      <div className="w-full mt-2 flex items-center justify-center space-x-2 bg-green-50 text-green-700 py-2 rounded-lg font-medium text-sm border border-green-200 cursor-default">
-                                        <CheckCircle className="w-4 h-4" />
-                                        <span>Déjà inscrit</span>
+
+                                  <div className="p-4 space-y-2.5">
+                                    <div className="flex items-center justify-between text-xs text-[var(--text-muted)]">
+                                      <span className="tabular-nums">Cours #{course.id_cours}</span>
+                                      {course.estimated_duration && (
+                                        <span className="inline-flex items-center gap-1 text-[var(--text-secondary)]">
+                                          <Clock className="w-3 h-3 text-[var(--accent-text)]" />
+                                          <span>{course.estimated_duration}</span>
+                                        </span>
+                                      )}
+                                    </div>
+
+                                    <h3 className="text-base font-semibold text-[var(--text-primary)] group-hover:text-[var(--accent-text)] transition-colors flex items-start justify-between gap-2">
+                                      <span>{course.titre}</span>
+                                      <ArrowUpRight className="w-4 h-4 shrink-0 opacity-0 -translate-x-1 group-hover:opacity-100 group-hover:translate-x-0 transition-all text-[var(--accent-text)] mt-0.5" />
+                                    </h3>
+
+                                    <p className="text-sm text-[var(--text-secondary)] leading-relaxed line-clamp-3">
+                                      {course.description}
+                                    </p>
+
+                                    {course.prerequisites && (
+                                      <div className="p-2.5 rounded-lg bg-[var(--bg-subtle)]/80 border border-[var(--border-subtle)] text-xs space-y-1">
+                                        <span className="font-medium text-[var(--text-primary)] flex items-center gap-1.5">
+                                          <ListChecks className="w-3.5 h-3.5 text-[var(--accent-text)] shrink-0" />
+                                          <span>Prérequis</span>
+                                        </span>
+                                        <p className="text-[var(--text-secondary)] leading-snug">
+                                          {course.prerequisites}
+                                        </p>
                                       </div>
+                                    )}
+                                  </div>
+                                </div>
+
+                                {token && (role === 'etudiant' || role === 'ETUDIANT') && (
+                                  <div className="px-4 pb-4 pt-1">
+                                    {isEnrolled ? (
+                                      <Link
+                                        to={`/cours/${course.id_cours}`}
+                                        className="w-full flex items-center justify-center gap-1.5 bg-[var(--success-bg)] hover:brightness-105 text-[var(--success-text)] border border-[var(--success-border)] py-2 rounded-lg text-xs font-medium transition"
+                                      >
+                                        <CheckCircle className="w-3.5 h-3.5" />
+                                        <span>Accéder au cours</span>
+                                      </Link>
                                     ) : (
                                       <button
+                                        type="button"
+                                        disabled={enrollingId === course.id_cours}
                                         onClick={() => handleEnroll(course.id_cours)}
-                                        className="w-full mt-2 flex items-center justify-center space-x-2 bg-indigo-600 text-white hover:bg-indigo-700 py-2 rounded-lg font-medium transition-colors cursor-pointer text-sm shadow-sm"
+                                        className="w-full flex items-center justify-center gap-1.5 btn-accent py-2 rounded-lg text-xs font-medium disabled:opacity-50 cursor-pointer transition-transform active:scale-[0.99]"
                                       >
-                                        <PlusCircle className="w-4 h-4" />
-                                        <span>S'inscrire au cours</span>
+                                        <PlusCircle className="w-3.5 h-3.5" />
+                                        <span>
+                                          {enrollingId === course.id_cours
+                                            ? 'Inscription...'
+                                            : "S'inscrire au cours"}
+                                        </span>
                                       </button>
                                     )}
                                   </div>
                                 )}
-                              </div>
+                              </article>
                             );
                           })}
                         </div>
@@ -202,9 +594,8 @@ export default function Catalog() {
                 </div>
               );
             })}
-          </div>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   );
 }

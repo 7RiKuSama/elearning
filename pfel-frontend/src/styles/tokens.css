@@ -1,0 +1,89 @@
+/* File: src/styles/tokens.css */
+:root {
+  /* Surfaces — Gruvbox Light warm cream & stone */
+  --bg-canvas: #fbf1c7;
+  --bg-surface: #f9f5d7;
+  --bg-subtle: #f2e5bc;
+  --bg-hover: #ebdbb2;
+  --bg-hero: #f2e5bc;
+
+  /* Text — Gruvbox Light dark ink & muted gray */
+  --text-primary: #282828;
+  --text-secondary: #504945;
+  --text-muted: #7c6f64;
+  --text-inverse: #fbf1c7;
+
+  /* Borders */
+  --border-subtle: #d5c4a1;
+  --border-strong: #bdae93;
+
+  /* Accent — Gruvbox warm orange */
+  --accent: #d65d0e;
+  --accent-hover: #af3a03;
+  --accent-soft: rgba(214, 93, 14, 0.14);
+  --accent-text: #af3a03;
+  --accent-border: rgba(214, 93, 14, 0.35);
+
+  /* Semantic status — Gruvbox green, yellow, red */
+  --success-bg: rgba(121, 116, 14, 0.14);
+  --success-text: #79740e;
+  --success-border: rgba(121, 116, 14, 0.35);
+
+  --warning-bg: rgba(181, 118, 20, 0.15);
+  --warning-text: #b57614;
+  --warning-border: rgba(181, 118, 20, 0.35);
+
+  --danger-bg: rgba(157, 0, 6, 0.13);
+  --danger-text: #9d0006;
+  --danger-border: rgba(157, 0, 6, 0.35);
+
+  /* Radii & Elevation */
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 20px;
+  --shadow-card: 0 1px 2px rgba(40, 40, 40, 0.06);
+  --shadow-modal: 0 18px 42px rgba(40, 40, 40, 0.18);
+}
+
+.dark {
+  /* Surfaces — Gruvbox Dark charcoal & bg0/bg1/bg2 */
+  --bg-canvas: #1d2021;
+  --bg-surface: #282828;
+  --bg-subtle: #32302f;
+  --bg-hover: #3c3836;
+  --bg-hero: #282828;
+
+  /* Text — Gruvbox Dark fg1/fg3/fg4 */
+  --text-primary: #ebdbb2;
+  --text-secondary: #d5c4a1;
+  --text-muted: #a89984;
+  --text-inverse: #1d2021;
+
+  /* Borders */
+  --border-subtle: #3c3836;
+  --border-strong: #504945;
+
+  /* Accent — Gruvbox bright orange */
+  --accent: #fe8019;
+  --accent-hover: #d65d0e;
+  --accent-soft: rgba(254, 128, 25, 0.16);
+  --accent-text: #fe8019;
+  --accent-border: rgba(254, 128, 25, 0.38);
+
+  /* Semantic status — Gruvbox bright green, yellow, red */
+  --success-bg: rgba(184, 187, 38, 0.15);
+  --success-text: #b8bb26;
+  --success-border: rgba(184, 187, 38, 0.35);
+
+  --warning-bg: rgba(250, 189, 47, 0.15);
+  --warning-text: #fabd2f;
+  --warning-border: rgba(250, 189, 47, 0.35);
+
+  --danger-bg: rgba(251, 73, 52, 0.15);
+  --danger-text: #fb4934;
+  --danger-border: rgba(251, 73, 52, 0.35);
+
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.32);
+  --shadow-modal: 0 20px 48px rgba(0, 0, 0, 0.6);
+}

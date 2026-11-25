@@ -13,13 +13,17 @@ type Categorie struct {
 }
 
 type Cours struct {
-	IDCours      int       `json:"id_cours"`
-	Titre        string    `json:"titre"`
-	Description  string    `json:"description"`
-	EstPublie    bool      `json:"est_publie"`
-	DateCreation time.Time `json:"date_creation"`
-	IDCategorie  int       `json:"id_categorie"`
-	IDEnseignant uuid.UUID `json:"id_enseignant"`
+	IDCours           int       `json:"id_cours"`
+	Titre             string    `json:"titre"`
+	Description       string    `json:"description"`
+	EstPublie         bool      `json:"est_publie"`
+	DateCreation      time.Time `json:"date_creation"`
+	IDCategorie       int       `json:"id_categorie"`
+	IDEnseignant      uuid.UUID `json:"id_enseignant"`
+	CoverURL          string    `json:"cover_url"`
+	EstimatedDuration string    `json:"estimated_duration"`
+	DifficultyLevel   string    `json:"difficulty_level"`
+	Prerequisites     string    `json:"prerequisites"`
 }
 
 type Inscription struct {

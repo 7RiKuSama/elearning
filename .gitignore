@@ -1,2 +1,7 @@
 /node_modules/
 /backend/uploads
+.env
+*.env
+*.dump
+node_modules/
+dist/

@@ -33,6 +33,12 @@ const DIFFICULTY_STYLES: Record<string, string> = {
   Advanced: 'bg-[var(--danger-bg)] text-[var(--danger-text)] border-[var(--danger-border)]',
 };
 
+const DIFFICULTY_LABELS: Record<string, string> = {
+  Beginner: 'Débutant (cool)',
+  Intermediate: 'Intermédiaire (ça chauffe)',
+  Advanced: 'Avancé (mode turbo)',
+};
+
 export default function Catalog() {
   const [courses, setCourses] = useState<Cours[]>([]);
   const [categories, setCategories] = useState<Categorie[]>([]);
@@ -71,7 +77,7 @@ export default function Catalog() {
       }
     } catch (err) {
       console.error(err);
-      showError('Impossible de charger le catalogue des cours.');
+      showError("Oups, le catalogue n'a pas voulu s'ouvrir — réessaie dans un instant !");
     } finally {
       setLoading(false);
     }
@@ -90,9 +96,9 @@ export default function Catalog() {
     try {
       await enrollCourse(id);
       setEnrolledIds((prev) => new Set(prev).add(id));
-      success('Inscription confirmée ! Vous pouvez désormais suivre ce cours.', 'Inscription réussie');
+      success('Te voilà dans la boucle ! Bon apprentissage.', 'C’est validé');
     } catch {
-      showError("Erreur lors de l'inscription au cours.");
+      showError("L'inscription a glissé en route — réessaie !");
     } finally {
       setEnrollingId(null);
     }
@@ -231,16 +237,16 @@ export default function Catalog() {
       <section ref={heroRef} className="max-w-3xl mx-auto text-center space-y-5 pt-1">
         <div className="gsap-hero-item inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-[var(--accent-soft)] border border-[var(--accent-border)] text-[var(--accent-text)] text-xs font-medium shadow-2xs">
           <Sparkles className="w-3.5 h-3.5" />
-          <span>Espace d'apprentissage PFE-Learn</span>
+          <span>Terrain de jeu Slang</span>
         </div>
 
         <h1 className="gsap-hero-item font-editorial text-3xl sm:text-5xl text-[var(--text-primary)] tracking-tight leading-[1.12]">
-          What would you like to explore today?
+          On fait péter quel sujet aujourd&apos;hui ?
         </h1>
 
         <p className="gsap-hero-item text-[var(--text-secondary)] text-sm sm:text-base max-w-xl mx-auto leading-relaxed">
-          Parcourez les cours organisés par matière, vérifiez les prérequis et suivez vos modules
-          à votre rythme.
+          Teste, bricole, débloque des chapitres à ton rythme et fais grimper ton niveau sans prise
+          de tête.
         </p>
 
         {/* Search & Filter Composer */}
@@ -251,7 +257,7 @@ export default function Catalog() {
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Rechercher un cours, un sujet ou un prérequis..."
+              placeholder="Cherche un cours, une idée folle ou un prérequis..."
               className="w-full bg-transparent text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none"
             />
             {hasActiveFilters && (
@@ -261,7 +267,7 @@ export default function Catalog() {
                 className="inline-flex items-center gap-1 text-xs font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] px-2 py-1 rounded-lg hover:bg-[var(--bg-subtle)] transition cursor-pointer shrink-0"
               >
                 <RotateCcw className="w-3 h-3" />
-                <span>Réinitialiser</span>
+                <span>Tout remettre à zéro</span>
               </button>
             )}
           </div>
@@ -269,10 +275,10 @@ export default function Catalog() {
           <div className="flex flex-wrap items-center justify-between gap-2 px-3 pt-2.5 pb-1 border-t border-[var(--border-subtle)] mt-1.5">
             <div className="flex flex-wrap items-center gap-1.5 text-xs">
               {[
-                { value: 'ALL', label: 'Tous niveaux' },
-                { value: 'Beginner', label: 'Beginner' },
-                { value: 'Intermediate', label: 'Intermediate' },
-                { value: 'Advanced', label: 'Advanced' },
+                { value: 'ALL', label: 'Tous les niveaux' },
+                { value: 'Beginner', label: 'Débutant' },
+                { value: 'Intermediate', label: 'Intermédiaire' },
+                { value: 'Advanced', label: 'Avancé' },
               ].map((opt) => {
                 const active = difficultyFilter === opt.value;
                 return (
@@ -292,7 +298,7 @@ export default function Catalog() {
               })}
             </div>
             <span className="text-xs text-[var(--text-muted)] tabular-nums">
-              {filteredCourses.length} cours disponible{filteredCourses.length > 1 ? 's' : ''}
+              {filteredCourses.length} cours prêt{filteredCourses.length > 1 ? 's' : ''}
             </span>
           </div>
         </div>
@@ -309,7 +315,7 @@ export default function Catalog() {
                   : 'bg-transparent text-[var(--text-secondary)] border-[var(--border-subtle)] hover:bg-[var(--bg-subtle)]/60'
               }`}
             >
-              Toutes les matières ({courses.length})
+              Tous les terrains ({courses.length})
             </button>
             {categories.map((cat) => {
               const active = selectedCategoryId === cat.id_categorie;
@@ -347,7 +353,7 @@ export default function Catalog() {
               className="inline-flex items-center gap-2 surface-card hover:bg-[var(--bg-subtle)] text-[var(--text-primary)] px-4 py-2.5 rounded-xl text-sm font-medium transition-all hover:-translate-y-0.5"
             >
               <UserPlus className="w-4 h-4" />
-              <span>Créer un compte</span>
+              <span>Rejoindre la troupe</span>
             </Link>
           </div>
         )}
@@ -363,7 +369,7 @@ export default function Catalog() {
             <p className="text-lg font-semibold text-[var(--text-primary)] tabular-nums leading-tight">
               {courses.length}
             </p>
-            <p className="text-xs text-[var(--text-muted)]">Cours publiés</p>
+            <p className="text-xs text-[var(--text-muted)]">Cours en piste</p>
           </div>
         </div>
 
@@ -375,7 +381,7 @@ export default function Catalog() {
             <p className="text-lg font-semibold text-[var(--text-primary)] tabular-nums leading-tight">
               {categories.length}
             </p>
-            <p className="text-xs text-[var(--text-muted)]">Catégories thématiques</p>
+            <p className="text-xs text-[var(--text-muted)]">Terrains thématiques</p>
           </div>
         </div>
 
@@ -389,8 +395,8 @@ export default function Catalog() {
             </p>
             <p className="text-xs text-[var(--text-muted)]">
               {token && (role === 'etudiant' || role === 'ETUDIANT')
-                ? 'Cours suivis'
-                : 'Parcours structurés'}
+                ? 'Tes missions en cours'
+                : 'Pratique & fun'}
             </p>
           </div>
         </div>
@@ -401,20 +407,20 @@ export default function Catalog() {
         <div className="surface-card p-10 rounded-2xl text-center max-w-md mx-auto space-y-2.5">
           <BookOpen className="w-10 h-10 text-[var(--accent-text)] mx-auto" />
           <h3 className="text-base font-semibold text-[var(--text-primary)]">
-            Aucune catégorie disponible
+            Le terrain est encore tout neuf
           </h3>
           <p className="text-sm text-[var(--text-secondary)]">
-            Connectez-vous en tant qu'enseignant pour créer des catégories et publier des cours.
+            Passe côté coach pour créer des terrains et lâcher les premiers cours.
           </p>
         </div>
       ) : filteredCourses.length === 0 && hasActiveFilters ? (
         <div className="surface-card p-10 rounded-2xl text-center max-w-md mx-auto space-y-3">
           <Search className="w-9 h-9 text-[var(--text-muted)] mx-auto opacity-75" />
           <h3 className="text-base font-semibold text-[var(--text-primary)]">
-            Aucun cours correspondant
+            Rien sous ce radar !
           </h3>
           <p className="text-sm text-[var(--text-secondary)]">
-            Essayez un autre mot-clé ou réinitialisez vos filtres de niveau et de matière.
+            Essaie un autre mot-clé ou réinitialise les filtres pour élargir ta chasse.
           </p>
           <button
             type="button"
@@ -458,7 +464,7 @@ export default function Catalog() {
                           {cat.nom}
                         </h2>
                         <p className="text-xs text-[var(--text-secondary)]">
-                          {cat.description || 'Aucune description'}
+                          {cat.description || 'Prêt à faire chauffer les neurones'}
                         </p>
                       </div>
                     </div>
@@ -478,7 +484,7 @@ export default function Catalog() {
                     <div className="p-6 border-t border-[var(--border-subtle)]">
                       {catCourses.length === 0 ? (
                         <p className="text-sm text-[var(--text-muted)] italic">
-                          Aucun cours dans cette catégorie pour le moment.
+                          Pas encore de cours ici — le boomslang garde ce coin au frais.
                         </p>
                       ) : (
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
@@ -488,6 +494,7 @@ export default function Catalog() {
                             const badgeClass =
                               DIFFICULTY_STYLES[level] ||
                               'bg-[var(--accent-soft)] text-[var(--accent-text)] border-[var(--accent-border)]';
+                            const levelLabel = DIFFICULTY_LABELS[level] || level;
 
                             return (
                               <article
@@ -512,13 +519,13 @@ export default function Catalog() {
                                       className={`absolute top-2.5 left-2.5 inline-flex items-center gap-1 text-[11px] font-medium px-2.5 py-0.5 rounded-full border backdrop-blur-xs ${badgeClass}`}
                                     >
                                       <GraduationCap className="w-3 h-3" />
-                                      <span>{level}</span>
+                                      <span>{levelLabel}</span>
                                     </span>
 
                                     {isEnrolled && (
                                       <span className="absolute top-2.5 right-2.5 inline-flex items-center gap-1 text-[11px] font-medium bg-[var(--success-bg)] text-[var(--success-text)] border border-[var(--success-border)] px-2.5 py-0.5 rounded-full backdrop-blur-xs">
                                         <CheckCircle className="w-3 h-3" />
-                                        <span>Inscrit</span>
+                                        <span>Dans ta team</span>
                                       </span>
                                     )}
                                   </div>
@@ -547,7 +554,7 @@ export default function Catalog() {
                                       <div className="p-2.5 rounded-lg bg-[var(--bg-subtle)]/80 border border-[var(--border-subtle)] text-xs space-y-1">
                                         <span className="font-medium text-[var(--text-primary)] flex items-center gap-1.5">
                                           <ListChecks className="w-3.5 h-3.5 text-[var(--accent-text)] shrink-0" />
-                                          <span>Prérequis</span>
+                                          <span>Bagage conseillé</span>
                                         </span>
                                         <p className="text-[var(--text-secondary)] leading-snug">
                                           {course.prerequisites}
@@ -565,7 +572,7 @@ export default function Catalog() {
                                         className="w-full flex items-center justify-center gap-1.5 bg-[var(--success-bg)] hover:brightness-105 text-[var(--success-text)] border border-[var(--success-border)] py-2 rounded-lg text-xs font-medium transition"
                                       >
                                         <CheckCircle className="w-3.5 h-3.5" />
-                                        <span>Accéder au cours</span>
+                                        <span>Continuer l&apos;aventure</span>
                                       </Link>
                                     ) : (
                                       <button
@@ -577,8 +584,8 @@ export default function Catalog() {
                                         <PlusCircle className="w-3.5 h-3.5" />
                                         <span>
                                           {enrollingId === course.id_cours
-                                            ? 'Inscription...'
-                                            : "S'inscrire au cours"}
+                                            ? 'Préparation...'
+                                            : 'Embarquer dans le cours'}
                                         </span>
                                       </button>
                                     )}

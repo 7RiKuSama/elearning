@@ -3,7 +3,7 @@ import React, { useEffect, useState } from 'react';
 import { getCourseModules, uploadFileToServer, uploadResource } from '../../api/services';
 import type { Cours, Module } from '../../types';
 import { renderMarkdownBlocks } from '../../utils/markdown';
-import { Upload, Link as LinkIcon } from 'lucide-react';
+import { Upload, Link as LinkIcon, X } from 'lucide-react';
 
 interface ResourceUploadModalProps {
   course: Cours;
@@ -41,7 +41,7 @@ export default function ResourceUploadModal({
 
       if (resType === 'text') {
         if (!mdContent.trim()) {
-          alert('Veuillez rédiger le contenu Markdown de la note.');
+          alert('Écris un petit bout de Markdown avant de balancer la note !');
           setUploading(false);
           return;
         }
@@ -64,7 +64,7 @@ export default function ResourceUploadModal({
         });
       } else if (resType === 'video' && videoSourceMode === 'url') {
         if (!resExternalUrl.trim()) {
-          alert('Veuillez saisir une URL vidéo valide.');
+          alert('Colle un lien vidéo valide avant de continuer !');
           setUploading(false);
           return;
         }
@@ -77,7 +77,7 @@ export default function ResourceUploadModal({
         });
       } else {
         if (!resFile) {
-          alert('Veuillez sélectionner un fichier.');
+          alert('Choisis un fichier à déposer dans le coffre !');
           setUploading(false);
           return;
         }
@@ -91,38 +91,48 @@ export default function ResourceUploadModal({
         });
       }
 
-      alert('Ressource ajoutée avec succès !');
+      alert('Nouvelle ressource ajoutée au butin !');
       onUploaded();
       onClose();
     } catch (err) {
       console.error(err);
-      alert("Erreur lors de l'ajout de la ressource.");
+      alert("Oups, l'envoi de la ressource a glissé — réessaie dans un instant !");
     } finally {
       setUploading(false);
     }
   };
 
   return (
-    <div className="fixed inset-0 bg-black/45 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+    <div
+      className="fixed inset-0 bg-black/45 backdrop-blur-xs flex items-center justify-center p-4 z-50"
+      onClick={() => {
+        if (!uploading) onClose();
+      }}
+    >
       <div
+        role="dialog"
+        aria-modal="true"
         className={`surface-card rounded-2xl w-full p-6 space-y-5 max-h-[90vh] overflow-y-auto ${
           resType === 'text' ? 'max-w-4xl' : 'max-w-md'
         }`}
         style={{ boxShadow: 'var(--shadow-modal)' }}
+        onClick={(e) => e.stopPropagation()}
       >
         <div className="flex justify-between items-center border-b border-[var(--border-subtle)] pb-3.5">
           <div>
             <h3 className="text-base font-semibold text-[var(--text-primary)]">
-              Ajouter une ressource
+              Glisser du butin dans le cours
             </h3>
             <p className="text-xs text-[var(--text-muted)]">{course.titre}</p>
           </div>
           <button
             type="button"
+            disabled={uploading}
             onClick={onClose}
-            className="text-[var(--text-muted)] hover:text-[var(--text-primary)] text-sm"
+            aria-label="Fermer"
+            className="p-1.5 rounded-lg text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition cursor-pointer disabled:opacity-50"
           >
-            ✕
+            <X className="w-4 h-4" />
           </button>
         </div>
 
@@ -132,27 +142,27 @@ export default function ResourceUploadModal({
           >
             <div>
               <label className="block text-xs font-medium text-[var(--text-secondary)] mb-1">
-                Titre du support
+                Nom de la trouvaille
               </label>
               <input
                 type="text"
                 value={resName}
                 onChange={(e) => setResName(e.target.value)}
-                placeholder="ex: Chapitre 1 - Introduction"
-                className="w-full px-3.5 py-2 bg-[var(--bg-subtle)] border border-[var(--border-subtle)] rounded-xl text-xs text-[var(--text-primary)]"
+                placeholder="ex: Chapitre 1 — Démarrage turbo"
+                className="w-full px-3.5 py-2 bg-[var(--bg-subtle)] border border-[var(--border-subtle)] rounded-xl text-xs text-[var(--text-primary)] placeholder:text-[var(--text-muted)]"
               />
             </div>
 
             <div>
               <label className="block text-xs font-medium text-[var(--text-secondary)] mb-1">
-                Chapitre / module
+                Ranger dans un chapitre
               </label>
               <select
                 value={resModuleId}
                 onChange={(e) => setResModuleId(e.target.value === '' ? '' : Number(e.target.value))}
-                className="w-full px-3.5 py-2 bg-[var(--bg-subtle)] border border-[var(--border-subtle)] rounded-xl text-xs text-[var(--text-primary)]"
+                className="w-full px-3.5 py-2 bg-[var(--bg-subtle)] border border-[var(--border-subtle)] rounded-xl text-xs text-[var(--text-primary)] cursor-pointer"
               >
-                <option value="">Non classé</option>
+                <option value="">En vrac (non classé)</option>
                 {courseModules.map((mod, idx) => (
                   <option key={mod.id_module} value={mod.id_module}>
                     {idx + 1}. {mod.titre}
@@ -163,7 +173,7 @@ export default function ResourceUploadModal({
 
             <div>
               <label className="block text-xs font-medium text-[var(--text-secondary)] mb-1">
-                Type de ressource
+                Format du support
               </label>
               <select
                 value={resType}
@@ -171,12 +181,12 @@ export default function ResourceUploadModal({
                   setResType(e.target.value);
                   if (e.target.value !== 'video') setVideoSourceMode('file');
                 }}
-                className="w-full px-3.5 py-2 bg-[var(--bg-subtle)] border border-[var(--border-subtle)] rounded-xl text-xs text-[var(--text-primary)]"
+                className="w-full px-3.5 py-2 bg-[var(--bg-subtle)] border border-[var(--border-subtle)] rounded-xl text-xs text-[var(--text-primary)] cursor-pointer"
               >
                 <option value="pdf">PDF</option>
                 <option value="video">Vidéo (MP4 ou YouTube / Vimeo)</option>
                 <option value="image">Image</option>
-                <option value="text">Texte / Markdown (.md, .txt)</option>
+                <option value="text">Note Markdown (.md, .txt)</option>
               </select>
             </div>
           </div>
@@ -190,35 +200,35 @@ export default function ResourceUploadModal({
                     onClick={() =>
                       setMdContent((prev) => `${prev}${prev ? '\n\n' : ''}## Titre de section\n`)
                     }
-                    className="px-2 py-1 rounded-lg bg-[var(--bg-surface)] hover:bg-[var(--bg-hover)] text-[var(--text-primary)] border border-[var(--border-subtle)]"
+                    className="px-2 py-1 rounded-lg bg-[var(--bg-surface)] hover:bg-[var(--bg-hover)] text-[var(--text-primary)] border border-[var(--border-subtle)] cursor-pointer"
                   >
                     H2
                   </button>
                   <button
                     type="button"
                     onClick={() => setMdContent((prev) => `${prev}**texte en gras**`)}
-                    className="px-2 py-1 rounded-lg bg-[var(--bg-surface)] hover:bg-[var(--bg-hover)] text-[var(--text-primary)] border border-[var(--border-subtle)] font-sans font-semibold"
+                    className="px-2 py-1 rounded-lg bg-[var(--bg-surface)] hover:bg-[var(--bg-hover)] text-[var(--text-primary)] border border-[var(--border-subtle)] font-sans font-semibold cursor-pointer"
                   >
                     B
                   </button>
                   <button
                     type="button"
                     onClick={() => setMdContent((prev) => `${prev}*texte en italique*`)}
-                    className="px-2 py-1 rounded-lg bg-[var(--bg-surface)] hover:bg-[var(--bg-hover)] text-[var(--text-primary)] border border-[var(--border-subtle)] font-editorial italic"
+                    className="px-2 py-1 rounded-lg bg-[var(--bg-surface)] hover:bg-[var(--bg-hover)] text-[var(--text-primary)] border border-[var(--border-subtle)] font-editorial italic cursor-pointer"
                   >
                     I
                   </button>
                   <button
                     type="button"
-                    onClick={() => setMdContent((prev) => `${prev}\n- Élément de liste`)}
-                    className="px-2 py-1 rounded-lg bg-[var(--bg-surface)] hover:bg-[var(--bg-hover)] text-[var(--text-primary)] border border-[var(--border-subtle)]"
+                    onClick={() => setMdContent((prev) => `${prev}\n- Astuce ou point clé`)}
+                    className="px-2 py-1 rounded-lg bg-[var(--bg-surface)] hover:bg-[var(--bg-hover)] text-[var(--text-primary)] border border-[var(--border-subtle)] cursor-pointer"
                   >
-                    • Liste
+                    - Liste
                   </button>
                   <button
                     type="button"
-                    onClick={() => setMdContent((prev) => `${prev}\n> Note importante`)}
-                    className="px-2 py-1 rounded-lg bg-[var(--bg-surface)] hover:bg-[var(--bg-hover)] text-[var(--text-primary)] border border-[var(--border-subtle)]"
+                    onClick={() => setMdContent((prev) => `${prev}\n> Le mot du boomslang`)}
+                    className="px-2 py-1 rounded-lg bg-[var(--bg-surface)] hover:bg-[var(--bg-hover)] text-[var(--text-primary)] border border-[var(--border-subtle)] cursor-pointer"
                   >
                     Quote
                   </button>
@@ -227,10 +237,10 @@ export default function ResourceUploadModal({
                     onClick={() =>
                       setMdContent(
                         (prev) =>
-                          `${prev}${prev ? '\n\n' : ''}\`\`\`go\nfmt.Println("Hello PFE-Learn")\n\`\`\`\n`
+                          `${prev}${prev ? '\n\n' : ''}\`\`\`rust\nprintln!("Hello Slang!");\n\`\`\`\n`
                       )
                     }
-                    className="px-2 py-1 rounded-lg bg-[var(--bg-surface)] hover:bg-[var(--bg-hover)] text-[var(--text-primary)] border border-[var(--border-subtle)]"
+                    className="px-2 py-1 rounded-lg bg-[var(--bg-surface)] hover:bg-[var(--bg-hover)] text-[var(--text-primary)] border border-[var(--border-subtle)] cursor-pointer"
                   >
                     Code
                   </button>
@@ -242,7 +252,7 @@ export default function ResourceUploadModal({
                       key={mode}
                       type="button"
                       onClick={() => setMdEditorTab(mode)}
-                      className={`px-2.5 py-1 rounded-md transition ${
+                      className={`px-2.5 py-1 rounded-md transition cursor-pointer ${
                         mdEditorTab === mode
                           ? 'bg-[var(--accent-soft)] text-[var(--accent-text)]'
                           : 'text-[var(--text-secondary)]'
@@ -263,10 +273,10 @@ export default function ResourceUploadModal({
                   <textarea
                     value={mdContent}
                     onChange={(e) => setMdContent(e.target.value)}
-                    placeholder={`# Introduction\n\nRédigez ici votre cours avec **gras**, *italique*, listes et blocs de code...`}
+                    placeholder={`# C'est parti\n\nBalance tes notes avec du **gras**, de *l'italique*, des listes et des blocs de code...`}
                     rows={11}
                     required
-                    className="w-full px-3.5 py-2.5 bg-[var(--bg-subtle)] text-[var(--text-primary)] font-mono text-xs rounded-xl border border-[var(--border-subtle)] focus:outline-none focus:border-[var(--accent)]"
+                    className="w-full px-3.5 py-2.5 bg-[var(--bg-subtle)] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] font-mono text-xs rounded-xl border border-[var(--border-subtle)] focus:outline-none focus:border-[var(--accent)]"
                   />
                 )}
 
@@ -284,7 +294,7 @@ export default function ResourceUploadModal({
                   <button
                     type="button"
                     onClick={() => setVideoSourceMode('file')}
-                    className={`flex-1 py-1.5 rounded-lg transition flex items-center justify-center space-x-1.5 ${
+                    className={`flex-1 py-1.5 rounded-lg transition flex items-center justify-center space-x-1.5 cursor-pointer ${
                       videoSourceMode === 'file'
                         ? 'bg-[var(--bg-surface)] text-[var(--text-primary)] border border-[var(--border-subtle)]'
                         : 'text-[var(--text-secondary)]'
@@ -296,7 +306,7 @@ export default function ResourceUploadModal({
                   <button
                     type="button"
                     onClick={() => setVideoSourceMode('url')}
-                    className={`flex-1 py-1.5 rounded-lg transition flex items-center justify-center space-x-1.5 ${
+                    className={`flex-1 py-1.5 rounded-lg transition flex items-center justify-center space-x-1.5 cursor-pointer ${
                       videoSourceMode === 'url'
                         ? 'bg-[var(--bg-surface)] text-[var(--text-primary)] border border-[var(--border-subtle)]'
                         : 'text-[var(--text-secondary)]'
@@ -319,19 +329,19 @@ export default function ResourceUploadModal({
                     onChange={(e) => setResExternalUrl(e.target.value)}
                     placeholder="https://www.youtube.com/watch?v=..."
                     required
-                    className="w-full px-3.5 py-2 bg-[var(--bg-subtle)] border border-[var(--border-subtle)] rounded-xl text-xs text-[var(--text-primary)]"
+                    className="w-full px-3.5 py-2 bg-[var(--bg-subtle)] border border-[var(--border-subtle)] rounded-xl text-xs text-[var(--text-primary)] placeholder:text-[var(--text-muted)]"
                   />
                 </div>
               ) : (
                 <div>
                   <label className="block text-xs font-medium text-[var(--text-secondary)] mb-1">
-                    Fichier
+                    Fichier à déposer
                   </label>
                   <input
                     type="file"
                     onChange={(e) => setResFile(e.target.files ? e.target.files[0] : null)}
                     required
-                    className="w-full px-3 py-2 bg-[var(--bg-subtle)] border border-[var(--border-subtle)] rounded-xl text-xs text-[var(--text-primary)] file:mr-3 file:py-1 file:px-3 file:rounded-lg file:border-0 file:font-medium file:bg-[var(--accent-soft)] file:text-[var(--accent-text)]"
+                    className="w-full px-3 py-2 bg-[var(--bg-subtle)] border border-[var(--border-subtle)] rounded-xl text-xs text-[var(--text-primary)] file:mr-3 file:py-1 file:px-3 file:rounded-lg file:border-0 file:font-medium file:bg-[var(--accent-soft)] file:text-[var(--accent-text)] cursor-pointer"
                   />
                 </div>
               )}
@@ -341,17 +351,18 @@ export default function ResourceUploadModal({
           <div className="flex space-x-3 pt-1">
             <button
               type="button"
+              disabled={uploading}
               onClick={onClose}
-              className="flex-1 bg-[var(--bg-subtle)] hover:bg-[var(--bg-hover)] text-[var(--text-primary)] py-2.5 rounded-xl text-xs font-medium transition"
+              className="flex-1 bg-[var(--bg-subtle)] hover:bg-[var(--bg-hover)] text-[var(--text-primary)] py-2.5 rounded-xl text-xs font-medium transition cursor-pointer disabled:opacity-50"
             >
               Annuler
             </button>
             <button
               type="submit"
               disabled={uploading}
-              className="flex-1 btn-accent disabled:opacity-50 py-2.5 rounded-xl text-xs font-medium"
+              className="flex-1 btn-accent disabled:opacity-50 py-2.5 rounded-xl text-xs font-medium transition cursor-pointer"
             >
-              {uploading ? 'Ajout en cours...' : 'Ajouter'}
+              {uploading ? 'Envoi en cours...' : 'Ajouter au butin'}
             </button>
           </div>
         </form>

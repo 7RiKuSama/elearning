@@ -114,7 +114,7 @@ export default function AdminDashboard() {
       });
     } catch (err) {
       console.error('Erreur lors du chargement des données admin :', err);
-      showError("Impossible de charger les données d'administration.");
+      showError("Oups ! Impossible de réveiller le panneau admin pour l'instant.");
     } finally {
       setLoading(false);
     }
@@ -199,10 +199,10 @@ export default function AdminDashboard() {
       setUsers((prev) =>
         prev.map((u) => (u.id_user === userId ? { ...u, statut_actif: !currentStatus } : u))
       );
-      success(!currentStatus ? 'Compte activé.' : 'Compte suspendu.');
+      success(!currentStatus ? 'Compte remis en piste !' : 'Compte mis en pause.');
     } catch (err) {
       console.error(err);
-      showError('Erreur lors de la modification du statut.');
+      showError('Impossible de changer le statut du compte.');
     } finally {
       setBusyId(null);
     }
@@ -215,10 +215,10 @@ export default function AdminDashboard() {
       setUsers((prev) =>
         prev.map((u) => (u.id_user === userId ? { ...u, role: newRole as any } : u))
       );
-      success('Rôle mis à jour.');
+      success('Nouveau badge de rôle attribué !');
     } catch (err) {
       console.error(err);
-      showError('Erreur lors de la modification du rôle.');
+      showError('Impossible de mettre à jour le rôle.');
     } finally {
       setBusyId(null);
     }
@@ -232,10 +232,10 @@ export default function AdminDashboard() {
       await deleteUser(targetId);
       setUsers((prev) => prev.filter((u) => u.id_user !== targetId));
       setUserToDelete(null);
-      success('Utilisateur supprimé.');
+      success('Utilisateur retiré du terrain.');
     } catch (err) {
       console.error(err);
-      showError('Erreur lors de la suppression.');
+      showError('La suppression a calé en route.');
     } finally {
       setBusyId(null);
     }
@@ -244,7 +244,7 @@ export default function AdminDashboard() {
   const handleAssignTeacher = async (courseId: number) => {
     const teacherId = selectedTeachers[courseId];
     if (!teacherId) {
-      warning('Veuillez sélectionner un enseignant.');
+      warning('Choisis un prof ou un admin avant de cliquer sur Assigner !');
       return;
     }
 
@@ -254,10 +254,10 @@ export default function AdminDashboard() {
       setCourses((prev) =>
         prev.map((c) => (c.id_cours === courseId ? { ...c, id_enseignant: teacherId } : c))
       );
-      success('Enseignant assigné au cours.');
+      success('Équipe au complet sur ce cours !');
     } catch (err) {
       console.error(err);
-      showError("Erreur lors de l'affectation de l'enseignant.");
+      showError("L'affectation n'a pas pu aboutir.");
     } finally {
       setBusyId(null);
     }
@@ -268,7 +268,7 @@ export default function AdminDashboard() {
       <div className="relative z-10 max-w-6xl mx-auto pb-14 px-4 sm:px-6 pt-6 space-y-6">
         <CrawlingPythonBg />
         <div className="surface-card rounded-2xl p-6 sm:p-8 space-y-5">
-          <SnakeLoader label="Chargement du panneau d'administration..." />
+          <SnakeLoader label="Le boomslang prépare les stats du QG..." />
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             {[0, 1, 2, 3].map((idx) => (
               <Skeleton key={idx} className="h-24 w-full rounded-xl" />
@@ -292,14 +292,13 @@ export default function AdminDashboard() {
         <div className="space-y-2 max-w-2xl">
           <div className="inline-flex items-center gap-1.5 text-xs font-medium text-[var(--accent-text)] bg-[var(--accent-soft)] border border-[var(--accent-border)] px-2.5 py-0.5 rounded-full">
             <ShieldAlert className="w-3.5 h-3.5" />
-            <span>Gouvernance & supervision</span>
+            <span>Salle de contrôle Slang</span>
           </div>
           <h1 className="font-editorial text-2xl sm:text-3xl text-[var(--text-primary)]">
-            Administration de la plateforme
+            Le QG de la plateforme
           </h1>
           <p className="text-sm text-[var(--text-secondary)]">
-            Supervisez l'activité globale, gérez les comptes et rôles, et affectez les enseignants
-            aux cours.
+            Jette un œil aux chiffres, gère la troupe et associe les bons coachs à chaque cours.
           </p>
         </div>
 
@@ -309,14 +308,14 @@ export default function AdminDashboard() {
             onClick={() => setActiveTab('users')}
             className="px-3.5 py-2 rounded-xl text-xs font-medium bg-[var(--bg-subtle)] hover:bg-[var(--bg-hover)] text-[var(--text-primary)] border border-[var(--border-subtle)] transition cursor-pointer"
           >
-            {breakdown.suspendedAccounts} suspendu{breakdown.suspendedAccounts > 1 ? 's' : ''}
+            {breakdown.suspendedAccounts} en pause
           </button>
           <button
             type="button"
             onClick={() => setActiveTab('assignment')}
             className="px-3.5 py-2 rounded-xl text-xs font-medium btn-accent transition cursor-pointer"
           >
-            {breakdown.assignedCourses}/{courses.length} cours assignés
+            {breakdown.assignedCourses}/{courses.length} cours coachés
           </button>
         </div>
       </header>
@@ -324,9 +323,9 @@ export default function AdminDashboard() {
       {/* Navigation Tabs */}
       <div className="flex flex-wrap gap-2 border-b border-[var(--border-subtle)] pb-3">
         {[
-          { id: 'stats', label: "Vue d'ensemble", icon: BarChart3 },
-          { id: 'users', label: `Utilisateurs (${users.length})`, icon: Users },
-          { id: 'assignment', label: `Affectation enseignants (${courses.length})`, icon: BookOpen },
+          { id: 'stats', label: 'Le pouls du site', icon: BarChart3 },
+          { id: 'users', label: `La troupe (${users.length})`, icon: Users },
+          { id: 'assignment', label: `Qui coache quoi ? (${courses.length})`, icon: BookOpen },
         ].map((tab) => {
           const Icon = tab.icon;
           const active = activeTab === tab.id;
@@ -357,7 +356,7 @@ export default function AdminDashboard() {
                 <Users className="w-5 h-5" />
               </div>
               <div>
-                <span className="block text-xs text-[var(--text-muted)]">Utilisateurs actifs</span>
+                <span className="block text-xs text-[var(--text-muted)]">Joueurs actifs</span>
                 <span className="text-2xl font-semibold text-[var(--text-primary)] tabular-nums">
                   {stats?.active_users ?? breakdown.activeAccounts}
                 </span>
@@ -372,12 +371,12 @@ export default function AdminDashboard() {
                 <BookOpen className="w-5 h-5" />
               </div>
               <div>
-                <span className="block text-xs text-[var(--text-muted)]">Cours au catalogue</span>
+                <span className="block text-xs text-[var(--text-muted)]">Cours prêts à jouer</span>
                 <span className="text-2xl font-semibold text-[var(--text-primary)] tabular-nums">
                   {stats?.total_courses ?? courses.length}
                 </span>
                 <span className="block text-[11px] text-[var(--text-secondary)]">
-                  {breakdown.publishedCourses} publiés · {breakdown.draftCourses} brouillons
+                  {breakdown.publishedCourses} en ligne · {breakdown.draftCourses} en coulisses
                 </span>
               </div>
             </div>
@@ -387,12 +386,12 @@ export default function AdminDashboard() {
                 <Award className="w-5 h-5" />
               </div>
               <div>
-                <span className="block text-xs text-[var(--text-muted)]">Total soumissions</span>
+                <span className="block text-xs text-[var(--text-muted)]">Défis rendus</span>
                 <span className="text-2xl font-semibold text-[var(--text-primary)] tabular-nums">
                   {stats?.total_submissions ?? 0}
                 </span>
                 <span className="block text-[11px] text-[var(--text-secondary)]">
-                  Copies & travaux reçus
+                  TPs & rendus reçus
                 </span>
               </div>
             </div>
@@ -402,12 +401,12 @@ export default function AdminDashboard() {
                 <UserCheck className="w-5 h-5" />
               </div>
               <div>
-                <span className="block text-xs text-[var(--text-muted)]">Encadrement</span>
+                <span className="block text-xs text-[var(--text-muted)]">Team coachs</span>
                 <span className="text-2xl font-semibold text-[var(--text-primary)] tabular-nums">
                   {breakdown.teachers}
                 </span>
                 <span className="block text-[11px] text-[var(--text-secondary)]">
-                  enseignants · {breakdown.students} étudiants
+                  profs · {breakdown.students} explorateurs
                 </span>
               </div>
             </div>
@@ -418,10 +417,10 @@ export default function AdminDashboard() {
             <section className="gsap-admin-card surface-card rounded-2xl p-6 space-y-5">
               <div className="flex items-center justify-between border-b border-[var(--border-subtle)] pb-3">
                 <h2 className="text-sm font-semibold text-[var(--text-primary)]">
-                  Répartition des comptes par rôle
+                  Qui est dans la place ?
                 </h2>
                 <span className="text-xs text-[var(--text-muted)] tabular-nums">
-                  {users.length} comptes
+                  {users.length} profils
                 </span>
               </div>
 
@@ -461,13 +460,13 @@ export default function AdminDashboard() {
 
               <div className="pt-3 border-t border-[var(--border-subtle)] grid grid-cols-2 gap-3 text-xs">
                 <div className="p-3 rounded-xl bg-[var(--bg-canvas)]/60 border border-[var(--border-subtle)]">
-                  <span className="text-[var(--text-muted)] block">Comptes actifs</span>
+                  <span className="text-[var(--text-muted)] block">Comptes chauds bouillants</span>
                   <span className="text-base font-semibold text-emerald-400 tabular-nums">
                     {breakdown.activeAccounts}
                   </span>
                 </div>
                 <div className="p-3 rounded-xl bg-[var(--bg-canvas)]/60 border border-[var(--border-subtle)]">
-                  <span className="text-[var(--text-muted)] block">Comptes suspendus</span>
+                  <span className="text-[var(--text-muted)] block">Comptes en pause</span>
                   <span className="text-base font-semibold text-[var(--danger-text)] tabular-nums">
                     {breakdown.suspendedAccounts}
                   </span>
@@ -479,16 +478,16 @@ export default function AdminDashboard() {
               <div className="flex items-center justify-between border-b border-[var(--border-subtle)] pb-3">
                 <h2 className="text-sm font-semibold text-[var(--text-primary)] flex items-center gap-2">
                   <Layers className="w-4 h-4 text-[var(--accent-text)]" />
-                  <span>État récent des cours</span>
+                  <span>Derniers cours sur la grille</span>
                 </h2>
                 <span className="text-xs text-[var(--text-muted)] tabular-nums">
-                  {Math.round((breakdown.publishedCourses / totalCoursesForPct) * 100)}% publiés
+                  {Math.round((breakdown.publishedCourses / totalCoursesForPct) * 100)}% en ligne
                 </span>
               </div>
 
               {courses.length === 0 ? (
                 <p className="py-8 text-center text-xs text-[var(--text-muted)]">
-                  Aucun cours enregistré pour le moment.
+                  Le terrain est tout calme — pas encore de cours ici.
                 </p>
               ) : (
                 <div className="divide-y divide-[var(--border-subtle)] max-h-[260px] overflow-y-auto">
@@ -503,8 +502,8 @@ export default function AdminDashboard() {
                           <p className="font-medium text-[var(--text-primary)] truncate">{c.titre}</p>
                           <p className="text-[var(--text-muted)] truncate mt-0.5">
                             {teacher
-                              ? `Prof. ${teacher.prenom} ${teacher.nom}`
-                              : 'Enseignant non assigné'}
+                              ? `Coach ${teacher.prenom} ${teacher.nom}`
+                              : 'Encore sans coach'}
                           </p>
                         </div>
                         <span
@@ -514,7 +513,7 @@ export default function AdminDashboard() {
                               : 'bg-[var(--warning-bg)] text-[var(--warning-text)] border-[var(--warning-border)]'
                           }`}
                         >
-                          {c.est_publie ? 'Publié' : 'Brouillon'}
+                          {c.est_publie ? 'En ligne' : 'En coulisses'}
                         </span>
                       </div>
                     );
@@ -532,7 +531,7 @@ export default function AdminDashboard() {
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-[var(--border-subtle)] pb-4">
             <h2 className="text-base font-semibold text-[var(--text-primary)] flex items-center gap-2">
               <Users className="w-4 h-4 text-[var(--accent-text)]" />
-              <span>Répertoire des utilisateurs ({filteredUsers.length})</span>
+              <span>La troupe Slang ({filteredUsers.length})</span>
             </h2>
 
             <div className="flex flex-wrap items-center gap-2">
@@ -542,7 +541,7 @@ export default function AdminDashboard() {
                   type="text"
                   value={userSearch}
                   onChange={(e) => setUserSearch(e.target.value)}
-                  placeholder="Rechercher nom ou email..."
+                  placeholder="Chercher un pseudo ou email..."
                   className="pl-8 pr-3 py-1.5 rounded-xl bg-[var(--bg-canvas)] border border-[var(--border-subtle)] text-xs text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:border-[var(--accent-border)]"
                 />
               </div>
@@ -564,10 +563,10 @@ export default function AdminDashboard() {
             <table className="w-full text-left text-sm text-[var(--text-secondary)]">
               <thead className="bg-[var(--bg-subtle)] text-xs font-medium text-[var(--text-secondary)]">
                 <tr>
-                  <th className="px-4 py-3 rounded-l-xl">Nom & Prénom</th>
+                  <th className="px-4 py-3 rounded-l-xl">Joueur</th>
                   <th className="px-4 py-3">Email</th>
                   <th className="px-4 py-3">Rôle</th>
-                  <th className="px-4 py-3">Statut</th>
+                  <th className="px-4 py-3">Humeur / Statut</th>
                   <th className="px-4 py-3 rounded-r-xl text-right">Actions</th>
                 </tr>
               </thead>
@@ -575,7 +574,7 @@ export default function AdminDashboard() {
                 {filteredUsers.length === 0 ? (
                   <tr>
                     <td colSpan={5} className="px-4 py-8 text-center text-xs text-[var(--text-muted)]">
-                      Aucun utilisateur ne correspond aux filtres.
+                      Personne sous ce filtre — essaie un autre mot-clé !
                     </td>
                   </tr>
                 ) : (
@@ -613,7 +612,7 @@ export default function AdminDashboard() {
                             ) : (
                               <XCircle className="w-3 h-3" />
                             )}
-                            <span>{u.statut_actif ? 'Actif' : 'Suspendu'}</span>
+                            <span>{u.statut_actif ? 'En forme' : 'En pause'}</span>
                           </span>
                         </td>
                         <td className="px-4 py-3 text-right">
@@ -628,7 +627,7 @@ export default function AdminDashboard() {
                                   : 'bg-[var(--success-bg)] text-[var(--success-text)] border-[var(--success-border)]'
                               }`}
                             >
-                              {u.statut_actif ? 'Suspendre' : 'Activer'}
+                              {u.statut_actif ? 'Mettre en pause' : 'Réactiver'}
                             </button>
 
                             <button
@@ -636,7 +635,7 @@ export default function AdminDashboard() {
                               disabled={isBusy}
                               onClick={() => setUserToDelete(u)}
                               className="p-1.5 bg-[var(--danger-bg)] text-[var(--danger-text)] border border-[var(--danger-border)] rounded-lg transition inline-flex items-center cursor-pointer"
-                              title="Supprimer l'utilisateur"
+                              title="Retirer ce compte"
                             >
                               <Trash2 className="w-3.5 h-3.5" />
                             </button>
@@ -657,7 +656,7 @@ export default function AdminDashboard() {
         <section className="gsap-admin-card surface-card rounded-2xl p-6 space-y-5">
           <h2 className="text-base font-semibold text-[var(--text-primary)] border-b border-[var(--border-subtle)] pb-3.5 flex items-center gap-2">
             <BookOpen className="w-4 h-4 text-[var(--accent-text)]" />
-            <span>Lier un enseignant à un cours</span>
+            <span>Mettre un coach aux commandes d&apos;un cours</span>
           </h2>
 
           <div className="space-y-3.5">
@@ -684,18 +683,18 @@ export default function AdminDashboard() {
                             : 'bg-[var(--warning-bg)] text-[var(--warning-text)] border-[var(--warning-border)]'
                         }`}
                       >
-                        {course.est_publie ? 'Publié' : 'Brouillon'}
+                        {course.est_publie ? 'En ligne' : 'En coulisses'}
                       </span>
                     </div>
                     <h3 className="font-semibold text-[var(--text-primary)] text-base">
                       {course.titre}
                     </h3>
                     <p className="text-xs text-[var(--text-muted)]">
-                      Enseignant actuel :{' '}
+                      Aux manettes :{' '}
                       <span className="text-[var(--text-secondary)] font-medium">
                         {currentTeacher
-                          ? `Prof. ${currentTeacher.prenom} ${currentTeacher.nom}`
-                          : 'Non assigné'}
+                          ? `Coach ${currentTeacher.prenom} ${currentTeacher.nom}`
+                          : 'Personne pour l’instant'}
                       </span>
                     </p>
                   </div>
@@ -712,10 +711,10 @@ export default function AdminDashboard() {
                       }
                       className="flex-1 md:w-56 px-3 py-2 bg-[var(--bg-canvas)] border border-[var(--border-subtle)] rounded-xl text-xs font-medium text-[var(--text-primary)] cursor-pointer"
                     >
-                      <option value="">Sélectionner un enseignant...</option>
+                      <option value="">Choisir un coach...</option>
                       {teachersList.map((t) => (
                         <option key={t.id_user} value={t.id_user}>
-                          Prof. {t.prenom} {t.nom} ({t.role})
+                          Coach {t.prenom} {t.nom} ({t.role})
                         </option>
                       ))}
                     </select>
@@ -726,7 +725,7 @@ export default function AdminDashboard() {
                       onClick={() => handleAssignTeacher(course.id_cours)}
                       className="btn-accent px-4 py-2 rounded-xl text-xs font-medium disabled:opacity-50 cursor-pointer shrink-0"
                     >
-                      {isBusy ? 'Affectation...' : 'Assigner'}
+                      {isBusy ? 'En cours...' : 'Assigner'}
                     </button>
                   </div>
                 </div>
@@ -739,19 +738,20 @@ export default function AdminDashboard() {
       {/* Confirmation Modal for Deleting User */}
       <ConfirmModal
         open={Boolean(userToDelete)}
-        title="Supprimer l'utilisateur"
+        title="Retirer ce compte ?"
         description={
           userToDelete
-            ? `Voulez-vous vraiment supprimer le compte de ${userToDelete.prenom} ${userToDelete.nom} (${userToDelete.email}) ? Cette action est irréversible.`
+            ? `Tu vas supprimer définitivement le compte de ${userToDelete.prenom} ${userToDelete.nom} (${userToDelete.email}). Tu es sûr de ton coup ?`
             : ''
         }
-        confirmLabel="Supprimer"
+        confirmLabel="Oui, supprimer"
+        cancelLabel="Garder"
         variant="danger"
         loading={Boolean(userToDelete && busyId === userToDelete.id_user)}
+        onConfirm={handleConfirmDeleteUser}
         onCancel={() => {
           if (!busyId) setUserToDelete(null);
         }}
-        onConfirm={handleConfirmDeleteUser}
       />
     </div>
   );

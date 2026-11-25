@@ -395,3 +395,39 @@ export const profileService = {
   },
 };
 
+// ############### Course Completion #####################
+export interface CourseCompletionsPayload {
+  id_cours: number;
+  completed_resource_ids: number[];
+}
+
+export interface ToggleCompletionPayload {
+  id_ressource: number;
+  id_cours: number;
+  termine: boolean;
+  completed_resource_ids: number[];
+}
+
+export const getCourseCompletions = async (courseId: number): Promise<number[]> => {
+  const { data } = await api.get<CourseCompletionsPayload | number[]>(
+    `/cours/${courseId}/completions`
+  );
+  if (Array.isArray(data)) {
+    return data.map(Number).filter((id) => !Number.isNaN(id));
+  }
+  return Array.isArray(data?.completed_resource_ids)
+    ? data.completed_resource_ids.map(Number).filter((id) => !Number.isNaN(id))
+    : [];
+};
+
+export const toggleResourceCompletion = async (
+  resourceId: number,
+  termine?: boolean
+): Promise<ToggleCompletionPayload> => {
+  const body = typeof termine === 'boolean' ? { termine } : {};
+  const { data } = await api.post<ToggleCompletionPayload>(
+    `/ressources/${resourceId}/toggle-completion`,
+    body
+  );
+  return data;
+};

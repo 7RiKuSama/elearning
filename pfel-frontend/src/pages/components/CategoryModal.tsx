@@ -20,8 +20,8 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
   open,
   title,
   description,
-  confirmLabel = 'Confirmer',
-  cancelLabel = 'Annuler',
+  confirmLabel = 'On y va',
+  cancelLabel = 'Finalement non',
   variant = 'danger',
   loading = false,
   onConfirm,
@@ -98,7 +98,8 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
             type="button"
             disabled={loading}
             onClick={onCancel}
-            aria-label="Fermer"
+            aria-label="Fermer cette fenêtre"
+            title="Fermer"
             className="p-1.5 rounded-lg text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition cursor-pointer disabled:opacity-50"
           >
             <X className="w-4 h-4" />
@@ -121,7 +122,7 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
             onClick={onConfirm}
             className={`px-4 py-2 rounded-xl text-xs sm:text-sm font-medium transition cursor-pointer disabled:opacity-50 ${confirmBtnClass}`}
           >
-            {loading ? 'Traitement...' : confirmLabel}
+            {loading ? 'Patiente une seconde...' : confirmLabel}
           </button>
         </div>
       </div>

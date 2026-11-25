@@ -73,8 +73,8 @@ export default function EvaluationCreateModal({
 
       alert(
         evalType === 'quiz'
-          ? 'Évaluation quiz créée ! Vous pouvez maintenant ajouter vos questions.'
-          : 'Évaluation créée avec succès !'
+          ? 'Quiz prêt à chauffer les neurones ! Ajoute tes questions dès maintenant.'
+          : 'Nouveau défi lâché pour la troupe !'
       );
       onCreated(
         resolvedId
@@ -92,7 +92,7 @@ export default function EvaluationCreateModal({
       onClose();
     } catch (err) {
       console.error(err);
-      alert("Erreur lors de la création de l'évaluation.");
+      alert("Oups, le défi n'a pas pu être lancé — réessaie dans un instant !");
     } finally {
       setUploading(false);
     }
@@ -106,12 +106,13 @@ export default function EvaluationCreateModal({
       >
         <div className="flex justify-between items-center border-b border-[var(--border-subtle)] pb-3.5">
           <h3 className="text-base font-semibold text-[var(--text-primary)]">
-            Créer une évaluation
+            Balance un nouveau défi
           </h3>
           <button
             type="button"
             onClick={onClose}
-            className="text-[var(--text-muted)] hover:text-[var(--text-primary)] text-sm"
+            aria-label="Fermer"
+            className="text-[var(--text-muted)] hover:text-[var(--text-primary)] text-sm cursor-pointer"
           >
             ✕
           </button>
@@ -120,37 +121,37 @@ export default function EvaluationCreateModal({
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label className="block text-xs font-medium text-[var(--text-secondary)] mb-1">
-              Type d'évaluation
+              Format du défi
             </label>
             <div className="grid grid-cols-2 gap-2 bg-[var(--bg-subtle)] p-1 rounded-xl border border-[var(--border-subtle)]">
               <button
                 type="button"
                 onClick={() => setEvalType('file')}
-                className={`py-1.5 rounded-lg text-xs font-medium transition ${
+                className={`py-1.5 rounded-lg text-xs font-medium transition cursor-pointer ${
                   evalType === 'file'
                     ? 'bg-[var(--bg-surface)] text-[var(--text-primary)] border border-[var(--border-subtle)]'
                     : 'text-[var(--text-secondary)]'
                 }`}
               >
-                Devoir (fichier)
+                TP à rendre (fichier)
               </button>
               <button
                 type="button"
                 onClick={() => setEvalType('quiz')}
-                className={`py-1.5 rounded-lg text-xs font-medium transition ${
+                className={`py-1.5 rounded-lg text-xs font-medium transition cursor-pointer ${
                   evalType === 'quiz'
                     ? 'bg-[var(--accent-soft)] text-[var(--accent-text)] border border-[var(--accent-border)]'
                     : 'text-[var(--text-secondary)]'
                 }`}
               >
-                Quiz interactif (auto-noté)
+                Quiz express (auto-corrigé)
               </button>
             </div>
           </div>
 
           <div>
             <label className="block text-xs font-medium text-[var(--text-secondary)] mb-1">
-              Titre de l'évaluation
+              Titre du défi
             </label>
             <input
               type="text"
@@ -158,31 +159,31 @@ export default function EvaluationCreateModal({
               onChange={(e) => setEvalTitle(e.target.value)}
               placeholder={
                 evalType === 'quiz'
-                  ? 'ex: Quiz Chapitre 1 - Fondamentaux'
-                  : 'ex: Projet Final - API Go'
+                  ? 'ex: Quiz éclair — Réflexes sur les tensors'
+                  : 'ex: Mission finale — Une API qui tient la route'
               }
               required
-              className="w-full px-3.5 py-2 bg-[var(--bg-subtle)] border border-[var(--border-subtle)] rounded-xl text-sm text-[var(--text-primary)]"
+              className="w-full px-3.5 py-2 bg-[var(--bg-subtle)] border border-[var(--border-subtle)] rounded-xl text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)]"
             />
           </div>
 
           <div>
             <label className="block text-xs font-medium text-[var(--text-secondary)] mb-1">
-              Instructions détaillées
+              Règles du jeu & consignes
             </label>
             <textarea
               value={evalInstructions}
               onChange={(e) => setEvalInstructions(e.target.value)}
-              placeholder="Consignes de l'évaluation..."
+              placeholder="Explique ce qu'il faut construire, tester ou rendre..."
               required
               rows={3}
-              className="w-full px-3.5 py-2 bg-[var(--bg-subtle)] border border-[var(--border-subtle)] rounded-xl text-sm text-[var(--text-primary)]"
+              className="w-full px-3.5 py-2 bg-[var(--bg-subtle)] border border-[var(--border-subtle)] rounded-xl text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)]"
             />
           </div>
 
           <div>
             <label className="block text-xs font-medium text-[var(--text-secondary)] mb-1">
-              Barème (ex: 20)
+              Score max / Barème (ex: 20)
             </label>
             <input
               type="number"
@@ -196,7 +197,7 @@ export default function EvaluationCreateModal({
           <div className="grid grid-cols-2 gap-3.5">
             <div>
               <label className="block text-xs font-medium text-[var(--text-secondary)] mb-1">
-                Date d'ouverture
+                Coup d&apos;envoi
               </label>
               <input
                 type="date"
@@ -208,7 +209,7 @@ export default function EvaluationCreateModal({
             </div>
             <div>
               <label className="block text-xs font-medium text-[var(--text-secondary)] mb-1">
-                Date de clôture
+                Clap de fin
               </label>
               <input
                 type="date"
@@ -224,20 +225,20 @@ export default function EvaluationCreateModal({
             <>
               <div>
                 <label className="block text-xs font-medium text-[var(--text-secondary)] mb-1">
-                  Nom personnalisé du fichier joint (optionnel)
+                  Petit nom pour le fichier joint (optionnel)
                 </label>
                 <input
                   type="text"
                   value={evalNomFichier}
                   onChange={(e) => setEvalNomFichier(e.target.value)}
-                  placeholder="ex: Enonce_TP1.pdf"
-                  className="w-full px-3.5 py-2 bg-[var(--bg-subtle)] border border-[var(--border-subtle)] rounded-xl text-sm text-[var(--text-primary)]"
+                  placeholder="ex: Sujet_Mission_1.pdf"
+                  className="w-full px-3.5 py-2 bg-[var(--bg-subtle)] border border-[var(--border-subtle)] rounded-xl text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)]"
                 />
               </div>
 
               <div>
                 <label className="block text-xs font-medium text-[var(--text-secondary)] mb-1">
-                  Fichier du sujet (optionnel)
+                  Fichier de départ / sujet (optionnel)
                 </label>
                 <input
                   type="file"
@@ -252,20 +253,20 @@ export default function EvaluationCreateModal({
             <button
               type="button"
               onClick={onClose}
-              className="flex-1 bg-[var(--bg-subtle)] hover:bg-[var(--bg-hover)] text-[var(--text-primary)] py-2.5 rounded-xl text-xs font-medium transition"
+              className="flex-1 bg-[var(--bg-subtle)] hover:bg-[var(--bg-hover)] text-[var(--text-primary)] py-2.5 rounded-xl text-xs font-medium transition cursor-pointer"
             >
               Annuler
             </button>
             <button
               type="submit"
               disabled={uploading}
-              className="flex-1 btn-accent disabled:opacity-50 py-2.5 rounded-xl text-xs font-medium"
+              className="flex-1 btn-accent disabled:opacity-50 py-2.5 rounded-xl text-xs font-medium cursor-pointer"
             >
               {uploading
-                ? 'Création...'
+                ? 'Mise en place...'
                 : evalType === 'quiz'
-                  ? 'Créer & configurer le quiz'
-                  : 'Créer'}
+                  ? 'Créer & préparer les questions'
+                  : 'Lancer le défi'}
             </button>
           </div>
         </form>

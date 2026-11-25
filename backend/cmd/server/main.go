@@ -2,6 +2,7 @@
 package main
 
 import (
+	"context"
 	"database/sql"
 	"log"
 	"net/http"
@@ -17,6 +18,30 @@ import (
 	"github.com/joho/godotenv"
 	_ "github.com/lib/pq"
 )
+
+func adaptCompletionGet(h *handlers.CompletionHandler) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		ctx := c.Request.Context()
+		if uid, exists := c.Get("user_id"); exists && ctx.Value("user_id") == nil {
+			ctx = context.WithValue(ctx, "user_id", uid)
+		}
+		req := c.Request.Clone(ctx)
+		req.SetPathValue("id", c.Param("id"))
+		h.GetCourseCompletions(c.Writer, req)
+	}
+}
+
+func adaptCompletionToggle(h *handlers.CompletionHandler) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		ctx := c.Request.Context()
+		if uid, exists := c.Get("user_id"); exists && ctx.Value("user_id") == nil {
+			ctx = context.WithValue(ctx, "user_id", uid)
+		}
+		req := c.Request.Clone(ctx)
+		req.SetPathValue("id", c.Param("id"))
+		h.ToggleResourceCompletion(c.Writer, req)
+	}
+}
 
 func main() {
 	_ = godotenv.Load()
@@ -48,6 +73,7 @@ func main() {
 	categoryRepo := repository.NewCategoryRepository(db)
 	enrollmentRepo := repository.NewEnrollmentRepository(db)
 	resourceRepo := repository.NewResourceRepository(db)
+	completionRepo := repository.NewCompletionRepository(db)
 	evaluationRepo := repository.NewEvaluationRepository(db)
 	quizRepo := repository.NewQuizRepository(db)
 	forumRepo := repository.NewForumRepository(db)
@@ -75,6 +101,7 @@ func main() {
 	resourceHandler := &handlers.ResourceHandler{
 		ResourceRepo: resourceRepo,
 	}
+	completionHandler := handlers.NewCompletionHandler(completionRepo)
 	evalHandler := &handlers.EvalHandler{
 		EvalRepo:  evaluationRepo,
 		NotifRepo: notifRepo,
@@ -174,10 +201,12 @@ func main() {
 			protected.PUT("/modules/:id", teacherOrAdmin, moduleHandler.UpdateModule)
 			protected.DELETE("/modules/:id", teacherOrAdmin, moduleHandler.DeleteModule)
 
-			// Resource module assignment & resources
+			// Resource module assignment, resources & lesson completion tracking
 			protected.PATCH("/resources/:id/module", teacherOrAdmin, moduleHandler.AssignResource)
 			protected.GET("/cours/:id/ressources", resourceHandler.ListResources)
 			protected.POST("/cours/:id/ressources", teacherOrAdmin, resourceHandler.UploadResource)
+			protected.GET("/cours/:id/completions", adaptCompletionGet(completionHandler))
+			protected.POST("/ressources/:id/toggle-completion", adaptCompletionToggle(completionHandler))
 
 			// Evaluations, Submissions & Quizzes
 			protected.GET("/courses/:id/evaluations", evalHandler.ListEvaluations)

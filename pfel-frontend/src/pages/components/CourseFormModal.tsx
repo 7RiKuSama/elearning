@@ -60,7 +60,7 @@ export default function CourseFormModal({
       setCoverUrl(uploaded.chemin_fichier);
     } catch (err) {
       console.error(err);
-      alert("Erreur lors de l'upload de l'image de couverture.");
+      alert("Oups, l'image de couverture n'a pas voulu passer !");
     } finally {
       setUploadingCover(false);
     }
@@ -83,17 +83,21 @@ export default function CourseFormModal({
 
       if (isEditing && courseToEdit) {
         await updateCourse(courseToEdit.id_cours, payload);
-        alert('Cours mis à jour avec succès !');
+        alert('Cours remis à neuf avec brio !');
       } else {
         await createCourse(payload);
-        alert('Cours créé avec succès !');
+        alert('Nouveau cours lâché dans l’arène !');
       }
 
       onSaved();
       onClose();
     } catch (err) {
       console.error(err);
-      alert(isEditing ? 'Erreur lors de la mise à jour.' : 'Erreur lors de la création du cours.');
+      alert(
+        isEditing
+          ? 'La mise à jour a glissé en route — réessaie !'
+          : 'Impossible de lancer ce cours pour le moment.'
+      );
     } finally {
       setSubmitting(false);
     }
@@ -109,12 +113,13 @@ export default function CourseFormModal({
       >
         <div className="flex justify-between items-center border-b border-[var(--border-subtle)] pb-3.5">
           <h3 className="text-base font-semibold text-[var(--text-primary)]">
-            {isEditing ? 'Modifier le cours' : 'Créer un nouveau cours'}
+            {isEditing ? 'Peaufiner ce cours' : 'Lancer un nouveau cours'}
           </h3>
           <button
             type="button"
             onClick={onClose}
-            className="text-[var(--text-muted)] hover:text-[var(--text-primary)] text-sm"
+            aria-label="Fermer"
+            className="text-[var(--text-muted)] hover:text-[var(--text-primary)] text-sm cursor-pointer"
           >
             ✕
           </button>
@@ -123,34 +128,36 @@ export default function CourseFormModal({
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label className="block text-xs font-medium text-[var(--text-secondary)] mb-1">
-              Titre du cours
+              Nom de l&apos;aventure (titre)
             </label>
             <input
               type="text"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
+              placeholder="ex: Dompter les embeddings sans prise de tête"
               required
-              className="w-full px-3.5 py-2 bg-[var(--bg-subtle)] border border-[var(--border-subtle)] rounded-xl text-sm text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)]"
+              className="w-full px-3.5 py-2 bg-[var(--bg-subtle)] border border-[var(--border-subtle)] rounded-xl text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:border-[var(--accent)]"
             />
           </div>
 
           <div>
             <label className="block text-xs font-medium text-[var(--text-secondary)] mb-1">
-              Description
+              Le pitch du cours
             </label>
             <textarea
               value={description}
               onChange={(e) => setDescription(e.target.value)}
+              placeholder="De quoi on va s'amuser et quel super-pouvoir on débloque ?"
               required
               rows={3}
-              className="w-full px-3.5 py-2 bg-[var(--bg-subtle)] border border-[var(--border-subtle)] rounded-xl text-sm text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)]"
+              className="w-full px-3.5 py-2 bg-[var(--bg-subtle)] border border-[var(--border-subtle)] rounded-xl text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:border-[var(--accent)]"
             />
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
             <div>
               <label className="block text-xs font-medium text-[var(--text-secondary)] mb-1">
-                Catégorie
+                Terrain / Catégorie
               </label>
               <select
                 value={categoryId}
@@ -167,50 +174,50 @@ export default function CourseFormModal({
 
             <div>
               <label className="block text-xs font-medium text-[var(--text-secondary)] mb-1">
-                Niveau de difficulté
+                Niveau de chauffe
               </label>
               <select
                 value={difficultyLevel}
                 onChange={(e) => setDifficultyLevel(e.target.value)}
                 className="w-full px-3.5 py-2 bg-[var(--bg-subtle)] border border-[var(--border-subtle)] rounded-xl text-sm text-[var(--text-primary)]"
               >
-                <option value="Beginner">Beginner</option>
-                <option value="Intermediate">Intermediate</option>
-                <option value="Advanced">Advanced</option>
+                <option value="Beginner">Débutant (tranquille)</option>
+                <option value="Intermediate">Intermédiaire (ça chauffe)</option>
+                <option value="Advanced">Avancé (mode turbo)</option>
               </select>
             </div>
           </div>
 
           <div>
             <label className="block text-xs font-medium text-[var(--text-secondary)] mb-1">
-              Durée estimée
+              Rythme / Durée estimée
             </label>
             <input
               type="text"
               value={estimatedDuration}
               onChange={(e) => setEstimatedDuration(e.target.value)}
-              placeholder="ex: 6 hours"
-              className="w-full px-3.5 py-2 bg-[var(--bg-subtle)] border border-[var(--border-subtle)] rounded-xl text-sm text-[var(--text-primary)]"
+              placeholder="ex: 4 semaines ou 6 heures"
+              className="w-full px-3.5 py-2 bg-[var(--bg-subtle)] border border-[var(--border-subtle)] rounded-xl text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)]"
             />
           </div>
 
           <div>
             <label className="block text-xs font-medium text-[var(--text-secondary)] mb-1">
-              Prérequis
+              Bagage conseillé avant de plonger
             </label>
             <textarea
               value={prerequisites}
               onChange={(e) => setPrerequisites(e.target.value)}
-              placeholder="ex: Notions de base en Python, HTTP et REST"
+              placeholder="ex: Savoir lire un peu de Python et ne pas avoir peur d'un terminal"
               rows={2}
-              className="w-full px-3.5 py-2 bg-[var(--bg-subtle)] border border-[var(--border-subtle)] rounded-xl text-sm text-[var(--text-primary)]"
+              className="w-full px-3.5 py-2 bg-[var(--bg-subtle)] border border-[var(--border-subtle)] rounded-xl text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)]"
             />
           </div>
 
           <div className="space-y-2">
             <label className="block text-xs font-medium text-[var(--text-secondary)] flex items-center space-x-1.5">
               <ImageIcon className="w-3.5 h-3.5 text-[var(--accent-text)]" />
-              <span>Image de couverture (fichier ou URL)</span>
+              <span>Affiche du cours (fichier ou lien)</span>
             </label>
             <input
               type="file"
@@ -227,14 +234,18 @@ export default function CourseFormModal({
               value={coverUrl}
               onChange={(e) => setCoverUrl(e.target.value)}
               placeholder="https://... ou /uploads/..."
-              className="w-full px-3.5 py-2 bg-[var(--bg-subtle)] border border-[var(--border-subtle)] rounded-xl text-xs text-[var(--text-primary)]"
+              className="w-full px-3.5 py-2 bg-[var(--bg-subtle)] border border-[var(--border-subtle)] rounded-xl text-xs text-[var(--text-primary)] placeholder:text-[var(--text-muted)]"
             />
             {uploadingCover && (
-              <p className="text-xs text-[var(--accent-text)]">Téléversement en cours...</p>
+              <p className="text-xs text-[var(--accent-text)]">Envoi de l&apos;affiche en cours...</p>
             )}
             {previewSrc && (
               <div className="relative h-28 w-full rounded-xl overflow-hidden border border-[var(--border-subtle)] bg-[var(--bg-subtle)]">
-                <img src={previewSrc} alt="Aperçu couverture" className="w-full h-full object-cover" />
+                <img
+                  src={previewSrc}
+                  alt="Aperçu de l'affiche"
+                  className="w-full h-full object-cover"
+                />
               </div>
             )}
           </div>
@@ -245,10 +256,13 @@ export default function CourseFormModal({
               id="course-pub"
               checked={isPublished}
               onChange={(e) => setIsPublished(e.target.checked)}
-              className="w-4 h-4 rounded accent-[var(--accent)]"
+              className="w-4 h-4 rounded accent-[var(--accent)] cursor-pointer"
             />
-            <label htmlFor="course-pub" className="text-xs font-medium text-[var(--text-primary)]">
-              {isEditing ? 'Publié' : 'Publier immédiatement'}
+            <label
+              htmlFor="course-pub"
+              className="text-xs font-medium text-[var(--text-primary)] cursor-pointer"
+            >
+              {isEditing ? 'Visible par la troupe' : 'Mettre en ligne direct'}
             </label>
           </div>
 
@@ -256,16 +270,20 @@ export default function CourseFormModal({
             <button
               type="button"
               onClick={onClose}
-              className="flex-1 bg-[var(--bg-subtle)] hover:bg-[var(--bg-hover)] text-[var(--text-primary)] py-2.5 rounded-xl text-xs font-medium transition"
+              className="flex-1 bg-[var(--bg-subtle)] hover:bg-[var(--bg-hover)] text-[var(--text-primary)] py-2.5 rounded-xl text-xs font-medium transition cursor-pointer"
             >
-              Annuler
+              Laisser tomber
             </button>
             <button
               type="submit"
               disabled={uploadingCover || submitting}
-              className="flex-1 btn-accent disabled:opacity-50 py-2.5 rounded-xl text-xs font-medium"
+              className="flex-1 btn-accent disabled:opacity-50 py-2.5 rounded-xl text-xs font-medium cursor-pointer"
             >
-              {submitting ? 'Enregistrement...' : isEditing ? 'Enregistrer' : 'Créer le cours'}
+              {submitting
+                ? 'Ça sauvegarde...'
+                : isEditing
+                ? 'Garder les modifs'
+                : 'C’est parti !'}
             </button>
           </div>
         </form>

@@ -54,7 +54,7 @@ export default function ModuleManagerModal({ course, onClose, onUpdated }: Modul
       onUpdated?.();
     } catch (err) {
       console.error(err);
-      alert('Erreur lors de la création du chapitre.');
+      alert("Oups, ce chapitre n'a pas voulu s'ajouter — réessaie !");
     }
   };
 
@@ -77,7 +77,7 @@ export default function ModuleManagerModal({ course, onClose, onUpdated }: Modul
       onUpdated?.();
     } catch (err) {
       console.error(err);
-      alert("Erreur lors de la mise à jour de l'ordre des chapitres.");
+      alert("L'ordre des chapitres a fait des siennes — réessaie dans un instant.");
     }
   };
 
@@ -88,7 +88,7 @@ export default function ModuleManagerModal({ course, onClose, onUpdated }: Modul
       onUpdated?.();
     } catch (err) {
       console.error(err);
-      alert('Erreur lors de la suppression du chapitre.');
+      alert('Impossible de virer ce chapitre pour le moment.');
     }
   };
 
@@ -102,7 +102,7 @@ export default function ModuleManagerModal({ course, onClose, onUpdated }: Modul
       onUpdated?.();
     } catch (err) {
       console.error(err);
-      alert("Erreur lors de l'affectation de la ressource au chapitre.");
+      alert("Le rangement de la ressource a glissé — réessaie !");
     }
   };
 
@@ -115,14 +115,15 @@ export default function ModuleManagerModal({ course, onClose, onUpdated }: Modul
         <div className="flex justify-between items-center border-b border-[var(--border-subtle)] pb-3.5">
           <div>
             <h3 className="text-base font-semibold text-[var(--text-primary)]">
-              Chapitres & modules
+              Atelier chapitres &amp; briques
             </h3>
             <p className="text-xs text-[var(--text-muted)]">{course.titre}</p>
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="text-[var(--text-muted)] hover:text-[var(--text-primary)] text-sm"
+            aria-label="Fermer"
+            className="text-[var(--text-muted)] hover:text-[var(--text-primary)] text-sm cursor-pointer"
           >
             ✕
           </button>
@@ -132,38 +133,43 @@ export default function ModuleManagerModal({ course, onClose, onUpdated }: Modul
           onSubmit={handleCreateModuleSubmit}
           className="surface-subtle p-4 rounded-xl space-y-3"
         >
-          <h4 className="text-xs font-semibold text-[var(--accent-text)]">Nouveau chapitre</h4>
+          <h4 className="text-xs font-semibold text-[var(--accent-text)]">
+            Ajouter une nouvelle brique de cours
+          </h4>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <input
               type="text"
               value={newModTitle}
               onChange={(e) => setNewModTitle(e.target.value)}
-              placeholder="ex: Chapitre 1 - Fondamentaux"
+              placeholder="ex: Chapitre 1 — Premiers réflexes"
               required
-              className="px-3.5 py-2 bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-xl text-xs text-[var(--text-primary)]"
+              className="px-3.5 py-2 bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-xl text-xs text-[var(--text-primary)] placeholder:text-[var(--text-muted)]"
             />
             <input
               type="text"
               value={newModDesc}
               onChange={(e) => setNewModDesc(e.target.value)}
-              placeholder="Description courte (optionnel)"
-              className="px-3.5 py-2 bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-xl text-xs text-[var(--text-primary)]"
+              placeholder="Un petit résumé fun (optionnel)"
+              className="px-3.5 py-2 bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-xl text-xs text-[var(--text-primary)] placeholder:text-[var(--text-muted)]"
             />
           </div>
           <div className="flex justify-end">
-            <button type="submit" className="btn-accent text-xs font-medium px-4 py-2 rounded-xl">
-              + Ajouter le chapitre
+            <button
+              type="submit"
+              className="btn-accent text-xs font-medium px-4 py-2 rounded-xl cursor-pointer"
+            >
+              + Poser la brique
             </button>
           </div>
         </form>
 
         <div className="space-y-2">
           <h4 className="text-xs font-medium text-[var(--text-muted)]">
-            Ordre d'affichage ({courseModules.length})
+            Fil d&apos;aventure ({courseModules.length})
           </h4>
           {courseModules.length === 0 ? (
             <p className="text-xs text-[var(--text-muted)] italic py-4 text-center">
-              Aucun chapitre créé pour ce cours.
+              Aucun chapitre pour l&apos;instant — pose la première brique au-dessus !
             </p>
           ) : (
             courseModules.map((mod, idx) => (
@@ -186,8 +192,8 @@ export default function ModuleManagerModal({ course, onClose, onUpdated }: Modul
                     type="button"
                     disabled={idx === 0}
                     onClick={() => handleMoveModule(idx, 'up')}
-                    className="p-1.5 rounded-lg border border-[var(--border-subtle)] hover:bg-[var(--bg-subtle)] disabled:opacity-35"
-                    title="Monter"
+                    className="p-1.5 rounded-lg border border-[var(--border-subtle)] hover:bg-[var(--bg-subtle)] disabled:opacity-35 cursor-pointer"
+                    title="Monter d'un cran"
                   >
                     <ArrowUp className="w-3.5 h-3.5 text-[var(--text-secondary)]" />
                   </button>
@@ -195,16 +201,16 @@ export default function ModuleManagerModal({ course, onClose, onUpdated }: Modul
                     type="button"
                     disabled={idx === courseModules.length - 1}
                     onClick={() => handleMoveModule(idx, 'down')}
-                    className="p-1.5 rounded-lg border border-[var(--border-subtle)] hover:bg-[var(--bg-subtle)] disabled:opacity-35"
-                    title="Descendre"
+                    className="p-1.5 rounded-lg border border-[var(--border-subtle)] hover:bg-[var(--bg-subtle)] disabled:opacity-35 cursor-pointer"
+                    title="Descendre d'un cran"
                   >
                     <ArrowDown className="w-3.5 h-3.5 text-[var(--text-secondary)]" />
                   </button>
                   <button
                     type="button"
                     onClick={() => handleDeleteModule(mod.id_module)}
-                    className="p-1.5 rounded-lg border border-[var(--danger-border)] bg-[var(--danger-bg)] text-[var(--danger-text)]"
-                    title="Supprimer"
+                    className="p-1.5 rounded-lg border border-[var(--danger-border)] bg-[var(--danger-bg)] text-[var(--danger-text)] cursor-pointer"
+                    title="Retirer ce chapitre"
                   >
                     <Trash2 className="w-3.5 h-3.5" />
                   </button>
@@ -217,7 +223,7 @@ export default function ModuleManagerModal({ course, onClose, onUpdated }: Modul
         {courseResourcesList.length > 0 && (
           <div className="space-y-2 border-t border-[var(--border-subtle)] pt-4">
             <h4 className="text-xs font-medium text-[var(--text-muted)]">
-              Classer les supports existants
+              Ranger le butin (supports de cours)
             </h4>
             {courseResourcesList.map((res) => (
               <div
@@ -230,9 +236,9 @@ export default function ModuleManagerModal({ course, onClose, onUpdated }: Modul
                 <select
                   value={res.id_module ?? ''}
                   onChange={(e) => handleAssignResourceModule(res.id_ressource, e.target.value)}
-                  className="px-2.5 py-1 bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-lg text-xs text-[var(--text-primary)]"
+                  className="px-2.5 py-1 bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-lg text-xs text-[var(--text-primary)] cursor-pointer"
                 >
-                  <option value="">Non classé</option>
+                  <option value="">En vrac (non classé)</option>
                   {courseModules.map((m, i) => (
                     <option key={m.id_module} value={m.id_module}>
                       {i + 1}. {m.titre}

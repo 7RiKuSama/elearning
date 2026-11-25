@@ -170,3 +170,16 @@ CREATE TABLE IF NOT EXISTS notifications (
 
 CREATE INDEX IF NOT EXISTS idx_notifications_dest_date
     ON notifications (id_destinataire, is_read, date_creation DESC);
+
+CREATE TABLE IF NOT EXISTS ressource_completions (
+  id_completion SERIAL PRIMARY KEY,
+  id_utilisateur INTEGER NOT NULL,
+  id_cours INTEGER NOT NULL,
+  id_ressource INTEGER NOT NULL,
+  termine BOOLEAN NOT NULL DEFAULT TRUE,
+  date_completion TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT uq_user_resource_completion UNIQUE (id_utilisateur, id_ressource)
+);
+
+CREATE INDEX IF NOT EXISTS idx_ressource_completions_user_course
+  ON ressource_completions (id_utilisateur, id_cours);

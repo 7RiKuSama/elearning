@@ -1,5 +1,5 @@
 // File: src/pages/student/StudentGrades.tsx
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { getStudentGrades } from '../../api/services';
 import {

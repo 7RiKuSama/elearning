@@ -10,7 +10,7 @@ import {
   getCatalog,
   assignTeacherToCourse,
 } from '../../api/services';
-import type { Utilisateur, Cours, PlatformStats } from '../../types';
+import type { Utilisateur, Cours, Role } from '../../types';
 import { useToast } from '../../context/ToastContext';
 import { ConfirmModal } from '../../components/ui/ConfirmModal';
 import { Skeleton, TableSkeleton } from '../../components/ui/Skeleton';
@@ -28,6 +28,12 @@ import {
   UserCheck,
   Layers,
 } from 'lucide-react';
+
+interface AdminPlatformStats {
+  active_users?: number;
+  total_courses?: number;
+  total_submissions?: number;
+}
 
 const SnakeLoader: React.FC<{ label: string }> = ({ label }) => {
   const loaderRef = useRef<HTMLDivElement | null>(null);
@@ -75,14 +81,14 @@ const SnakeLoader: React.FC<{ label: string }> = ({ label }) => {
 export default function AdminDashboard() {
   const [activeTab, setActiveTab] = useState<'stats' | 'users' | 'assignment'>('stats');
 
-  const [stats, setStats] = useState<PlatformStats | null>(null);
+  const [stats, setStats] = useState<AdminPlatformStats | null>(null);
   const [users, setUsers] = useState<Utilisateur[]>([]);
   const [courses, setCourses] = useState<Cours[]>([]);
   const [loading, setLoading] = useState(true);
 
   const [selectedTeachers, setSelectedTeachers] = useState<Record<number, string>>({});
   const [userSearch, setUserSearch] = useState('');
-  const [roleFilter, setRoleFilter] = useState<'ALL' | 'etudiant' | 'enseignant' | 'admin'>('ALL');
+  const [roleFilter, setRoleFilter] = useState<'ALL' | Role>('ALL');
   const [userToDelete, setUserToDelete] = useState<Utilisateur | null>(null);
   const [busyId, setBusyId] = useState<string | number | null>(null);
 
@@ -99,7 +105,7 @@ export default function AdminDashboard() {
       const safeUsers = usersData || [];
       const safeCourses = coursesData || [];
 
-      setStats(statsData);
+      setStats(statsData as AdminPlatformStats);
       setUsers(safeUsers);
       setCourses(safeCourses);
 
@@ -157,10 +163,10 @@ export default function AdminDashboard() {
   }, [users]);
 
   const breakdown = useMemo(() => {
-    const students = users.filter((u) => u.role === 'etudiant').length;
-    const teachers = users.filter((u) => u.role === 'enseignant').length;
-    const admins = users.filter((u) => u.role === 'admin').length;
-    const activeAccounts = users.filter((u) => u.statut_actif).length;
+    const students = users.filter((u) => u.role === 'ETUDIANT').length;
+    const teachers = users.filter((u) => u.role === 'ENSEIGNANT').length;
+    const admins = users.filter((u) => u.role === 'ADMIN').length;
+    const activeAccounts = users.filter((u) => Boolean(u.statut_actif)).length;
     const suspendedAccounts = users.length - activeAccounts;
     const publishedCourses = courses.filter((c) => c.est_publie).length;
     const draftCourses = courses.length - publishedCourses;
@@ -208,12 +214,12 @@ export default function AdminDashboard() {
     }
   };
 
-  const handleRoleChange = async (userId: string, newRole: string) => {
+  const handleRoleChange = async (userId: string, newRole: Role) => {
     setBusyId(userId);
     try {
       await updateUserRole(userId, newRole);
       setUsers((prev) =>
-        prev.map((u) => (u.id_user === userId ? { ...u, role: newRole as any } : u))
+        prev.map((u) => (u.id_user === userId ? { ...u, role: newRole } : u))
       );
       success('Nouveau badge de rôle attribué !');
     } catch (err) {
@@ -280,7 +286,7 @@ export default function AdminDashboard() {
     );
   }
 
-  const teachersList = users.filter((u) => u.role === 'enseignant' || u.role === 'admin');
+  const teachersList = users.filter((u) => u.role === 'ENSEIGNANT' || u.role === 'ADMIN');
   const totalUsersForPct = Math.max(users.length, 1);
   const totalCoursesForPct = Math.max(courses.length, 1);
 
@@ -333,7 +339,7 @@ export default function AdminDashboard() {
             <button
               key={tab.id}
               type="button"
-              onClick={() => setActiveTab(tab.id as any)}
+              onClick={() => setActiveTab(tab.id as 'stats' | 'users' | 'assignment')}
               className={`px-4 py-2 rounded-xl text-xs sm:text-sm font-medium transition flex items-center gap-2 cursor-pointer ${
                 active
                   ? 'btn-accent'
@@ -548,13 +554,13 @@ export default function AdminDashboard() {
 
               <select
                 value={roleFilter}
-                onChange={(e) => setRoleFilter(e.target.value as any)}
+                onChange={(e) => setRoleFilter(e.target.value as 'ALL' | Role)}
                 className="px-3 py-1.5 rounded-xl bg-[var(--bg-canvas)] border border-[var(--border-subtle)] text-xs font-medium text-[var(--text-primary)]"
               >
                 <option value="ALL">Tous les rôles</option>
-                <option value="etudiant">Étudiants</option>
-                <option value="enseignant">Enseignants</option>
-                <option value="admin">Admins</option>
+                <option value="ETUDIANT">Étudiants</option>
+                <option value="ENSEIGNANT">Enseignants</option>
+                <option value="ADMIN">Admins</option>
               </select>
             </div>
           </div>
@@ -580,6 +586,7 @@ export default function AdminDashboard() {
                 ) : (
                   filteredUsers.map((u) => {
                     const isBusy = busyId === u.id_user;
+                    const isActive = Boolean(u.statut_actif);
 
                     return (
                       <tr key={u.id_user} className="hover:bg-[var(--bg-subtle)]/40 transition">
@@ -591,28 +598,28 @@ export default function AdminDashboard() {
                           <select
                             disabled={isBusy}
                             value={u.role}
-                            onChange={(e) => handleRoleChange(u.id_user, e.target.value)}
+                            onChange={(e) => handleRoleChange(u.id_user, e.target.value as Role)}
                             className="px-2.5 py-1 bg-[var(--bg-subtle)] border border-[var(--border-subtle)] rounded-lg text-xs font-medium text-[var(--text-primary)] cursor-pointer"
                           >
-                            <option value="etudiant">Étudiant</option>
-                            <option value="enseignant">Enseignant</option>
-                            <option value="admin">Admin</option>
+                            <option value="ETUDIANT">Étudiant</option>
+                            <option value="ENSEIGNANT">Enseignant</option>
+                            <option value="ADMIN">Admin</option>
                           </select>
                         </td>
                         <td className="px-4 py-3">
                           <span
                             className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium border ${
-                              u.statut_actif
+                              isActive
                                 ? 'bg-[var(--success-bg)] text-[var(--success-text)] border-[var(--success-border)]'
                                 : 'bg-[var(--danger-bg)] text-[var(--danger-text)] border-[var(--danger-border)]'
                             }`}
                           >
-                            {u.statut_actif ? (
+                            {isActive ? (
                               <CheckCircle className="w-3 h-3" />
                             ) : (
                               <XCircle className="w-3 h-3" />
                             )}
-                            <span>{u.statut_actif ? 'En forme' : 'En pause'}</span>
+                            <span>{isActive ? 'En forme' : 'En pause'}</span>
                           </span>
                         </td>
                         <td className="px-4 py-3 text-right">
@@ -620,14 +627,14 @@ export default function AdminDashboard() {
                             <button
                               type="button"
                               disabled={isBusy}
-                              onClick={() => handleToggleStatus(u.id_user, u.statut_actif)}
+                              onClick={() => handleToggleStatus(u.id_user, isActive)}
                               className={`px-3 py-1 rounded-lg text-xs font-medium border transition cursor-pointer ${
-                                u.statut_actif
+                                isActive
                                   ? 'bg-[var(--warning-bg)] text-[var(--warning-text)] border-[var(--warning-border)]'
                                   : 'bg-[var(--success-bg)] text-[var(--success-text)] border-[var(--success-border)]'
                               }`}
                             >
-                              {u.statut_actif ? 'Mettre en pause' : 'Réactiver'}
+                              {isActive ? 'Mettre en pause' : 'Réactiver'}
                             </button>
 
                             <button
@@ -741,17 +748,14 @@ export default function AdminDashboard() {
         title="Retirer ce compte ?"
         description={
           userToDelete
-            ? `Tu vas supprimer définitivement le compte de ${userToDelete.prenom} ${userToDelete.nom} (${userToDelete.email}). Tu es sûr de ton coup ?`
+            ? `Tu vas supprimer définitivement le compte de ${userToDelete.prenom} ${userToDelete.nom}.`
             : ''
         }
-        confirmLabel="Oui, supprimer"
-        cancelLabel="Garder"
-        variant="danger"
-        loading={Boolean(userToDelete && busyId === userToDelete.id_user)}
+        confirmLabel="Supprimer"
+        cancelLabel="Annuler"
         onConfirm={handleConfirmDeleteUser}
-        onCancel={() => {
-          if (!busyId) setUserToDelete(null);
-        }}
+        onCancel={() => setUserToDelete(null)}
+        loading={Boolean(userToDelete && busyId === userToDelete.id_user)}
       />
     </div>
   );

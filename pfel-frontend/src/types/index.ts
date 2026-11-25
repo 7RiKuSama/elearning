@@ -4,12 +4,12 @@ export type Role = 'ETUDIANT' | 'ENSEIGNANT' | 'ADMIN';
 
 export interface Utilisateur {
   id_user: string;
-  nom: string;
   prenom: string;
+  nom: string;
   email: string;
   role: Role;
-  date_inscription: string;
-  est_actif: boolean;
+  avatar_url?: string | null;
+  statut_actif?: boolean;
 }
 
 export interface Categorie {

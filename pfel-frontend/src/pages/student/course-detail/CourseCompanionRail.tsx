@@ -1,6 +1,16 @@
 // File: src/pages/student/course-detail/CourseCompanionRail.tsx
 import React from 'react';
-import type { ChapterSection, CourseSectionTab } from './types';
+import type { Ressource } from '../../../types';
+import type { CourseSectionTab } from './types';
+
+export interface ChapterSection {
+  key: string;
+  orderLabel?: string;
+  title: string;
+  description?: string;
+  isUnassigned?: boolean;
+  items: Ressource[];
+}
 
 interface CourseCompanionRailProps {
   chapterSections: ChapterSection[];
@@ -65,7 +75,7 @@ export const CourseCompanionRail: React.FC<CourseCompanionRailProps> = ({
             <div className="space-y-1.5">
               {chapterSections.map((sec) => {
                 const secTotal = sec.items.length;
-                const secDone = sec.items.filter((item) =>
+                const secDone = sec.items.filter((item: Ressource) =>
                   completedResourceSet.has(item.id_ressource)
                 ).length;
 

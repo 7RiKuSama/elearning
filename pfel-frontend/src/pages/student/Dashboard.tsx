@@ -1,5 +1,5 @@
 // File: src/pages/student/Dashboard.tsx
-import React, { useEffect, useRef, useState, useMemo } from 'react';
+import { useEffect, useRef, useState, useMemo } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import gsap from 'gsap';
 import {
@@ -493,7 +493,7 @@ export default function StudentDashboard() {
               <button
                 key={tab.id}
                 type="button"
-                onClick={() => setStatusFilter(tab.id as any)}
+                onClick={() => setStatusFilter(tab.id as 'all' | 'in_progress' | 'completed')}
                 className={`px-3 py-1.5 rounded-lg transition cursor-pointer ${
                   statusFilter === tab.id
                     ? 'bg-[var(--bg-surface)] text-[var(--text-primary)] border border-[var(--border-subtle)] shadow-2xs'

@@ -44,7 +44,8 @@ func (r *CourseRepository) CreateCourse(ctx context.Context, c *models.Cours) er
 func (r *CourseRepository) GetPublishedCourses(ctx context.Context) ([]models.Cours, error) {
 	query := `
 		SELECT
-			id_cours, titre, description, est_publie, date_creation, id_categorie, id_enseignant,
+			id_cours, titre, COALESCE(description, ''), est_publie, date_creation,
+			COALESCE(id_categorie, 0), id_enseignant,
 			COALESCE(cover_url, ''),
 			COALESCE(estimated_duration, ''),
 			COALESCE(NULLIF(difficulty_level, ''), 'Beginner'),

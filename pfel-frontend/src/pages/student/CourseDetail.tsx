@@ -22,7 +22,7 @@ import { Skeleton } from '../../components/ui/Skeleton';
 import { BackTrailGlyph, CompassRingGlyph } from '../../components/ui/CourseGlyphs';
 import type { QuizQuestionItem } from '../components/QuizPlayerModal';
 import ForumSection from '../../components/ForumSection';
-import type { StudentSubmissionInfo, ChapterSection, CourseSectionTab } from './course-detail/types';
+import type { CourseSectionTab } from './course-detail/types';
 import { resolveFileUrl, getSessionUser } from './course-detail/mediaUtils';
 import { CourseHeroHeader } from './course-detail/CourseHeroHeader';
 import { CourseSectionTabs } from './course-detail/CourseSectionTabs';
@@ -31,6 +31,24 @@ import { CourseEvaluationsSection } from './course-detail/CourseEvaluationsSecti
 import { CourseCompanionRail } from './course-detail/CourseCompanionRail';
 import { SubmissionModal } from './course-detail/SubmissionModal';
 import { QuizModalWrapper } from './course-detail/QuizModalWrapper';
+
+export interface StudentSubmissionInfo {
+  id_soumission: number;
+  id_evaluation: number;
+  fichier_soumis: string;
+  note?: number | null;
+  commentaires?: string;
+  date_soumission?: string;
+}
+
+export interface ChapterSection {
+  key: string;
+  orderLabel?: string;
+  title: string;
+  description?: string;
+  isUnassigned?: boolean;
+  items: Ressource[];
+}
 
 export default function CourseDetail() {
   const { id } = useParams<{ id: string }>();
@@ -499,7 +517,6 @@ export default function CourseDetail() {
                 courseId={courseId}
                 currentUserId={sessionUser.id_user}
                 currentUserRole={sessionUser.role}
-                onThreadsCountChange={setForumThreadsCount}
               />
             </section>
           )}

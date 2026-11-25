@@ -1,13 +1,21 @@
 // File: src/pages/student/course-detail/CourseEvaluationsSection.tsx
 import React from 'react';
 import type { Evaluation } from '../../../types';
-import type { StudentSubmissionInfo } from './types';
 import {
   QuestCheckGlyph,
   CompletedBadgeGlyph,
   PendingRingGlyph,
   TrophyCrestGlyph,
 } from '../../../components/ui/CourseGlyphs';
+
+export interface StudentSubmissionInfo {
+  id_soumission: number;
+  id_evaluation: number;
+  fichier_soumis: string;
+  note?: number | null;
+  commentaires?: string;
+  date_soumission?: string;
+}
 
 interface CourseEvaluationsSectionProps {
   evaluations: Evaluation[];

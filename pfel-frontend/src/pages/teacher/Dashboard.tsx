@@ -20,7 +20,7 @@ import CoursesTab from './CoursesTab';
 import EvaluationsTab from './EvaluationsTab';
 import ClassTrackingTab from './ClassTrackingTab';
 import CourseFormModal from '../components/CourseFormModal';
-import CategoryModal from '../components/CategoryModal';
+import RawCategoryModal from '../components/CategoryModal';
 import ModuleManagerModal from '../components/ModuleManagerModal';
 import ResourceUploadModal from '../components/ResourceUploadModal';
 import EvaluationCreateModal from '../components/EvaluationCreateModal';
@@ -34,14 +34,31 @@ import {
   FileText,
 } from 'lucide-react';
 
-function resolveEvalId(raw: any): number | null {
+const CategoryModal = RawCategoryModal as React.ComponentType<{
+  onClose?: () => void;
+  onCreated?: () => Promise<void> | void;
+}>;
+
+const SafeClassTrackingTab = ClassTrackingTab as React.ComponentType<{
+  courses: Cours[];
+  courseStats?: Record<number, TeacherCourseStats>;
+}>;
+
+function resolveEvalId(raw: unknown): number | null {
+  const record = raw as {
+    id_evaluation?: unknown;
+    id?: unknown;
+    data?: { id_evaluation?: unknown; id?: unknown };
+    evaluation?: { id_evaluation?: unknown; id?: unknown };
+  } | null;
+
   const val =
-    raw?.id_evaluation ??
-    raw?.id ??
-    raw?.data?.id_evaluation ??
-    raw?.data?.id ??
-    raw?.evaluation?.id_evaluation ??
-    raw?.evaluation?.id;
+    record?.id_evaluation ??
+    record?.id ??
+    record?.data?.id_evaluation ??
+    record?.data?.id ??
+    record?.evaluation?.id_evaluation ??
+    record?.evaluation?.id;
   const num = Number(val);
   return Number.isFinite(num) && num > 0 ? num : null;
 }
@@ -136,15 +153,13 @@ export default function TeacherDashboard() {
           ]);
           const rArr = resList || [];
           const eArr = evalList || [];
-          const sArr = stdList || [];
+          const sArr = (stdList || []) as Array<{ progression_pourcentage?: number | string }>;
 
           const avgProg =
             sArr.length > 0
               ? Math.round(
-                  sArr.reduce(
-                    (acc: number, s: any) => acc + Number(s.progression_pourcentage || 0),
-                    0
-                  ) / sArr.length
+                  sArr.reduce((acc, s) => acc + Number(s.progression_pourcentage || 0), 0) /
+                    sArr.length
                 )
               : 0;
 
@@ -215,8 +230,10 @@ export default function TeacherDashboard() {
   };
 
   const handleOpenQuizForCourse = async (course: Cours) => {
-    const evals = await getCourseEvaluations(course.id_cours).catch(() => []);
-    const quizEval = (evals || []).find((ev: any) => ev.type_evaluation === 'quiz');
+    const evals = (await getCourseEvaluations(course.id_cours).catch(() => [])) as Array<
+      Evaluation & { type_evaluation?: string }
+    >;
+    const quizEval = (evals || []).find((ev) => ev.type_evaluation === 'quiz');
     if (quizEval) {
       await openQuizBuilderForEvaluation(quizEval);
       return;
@@ -225,34 +242,40 @@ export default function TeacherDashboard() {
   };
 
   const handleEvaluationCreated = async (
-    created?: any,
+    created?: unknown,
     evalType?: 'file' | 'quiz',
     courseId?: number
   ) => {
     await fetchData();
-    const isQuiz = evalType === 'quiz' || created?.type_evaluation === 'quiz';
+    const createdObj =
+      typeof created === 'object' && created !== null
+        ? (created as { type_evaluation?: string; id_cours?: number; titre?: string; bareme?: number })
+        : {};
+    const isQuiz = evalType === 'quiz' || createdObj.type_evaluation === 'quiz';
     if (!isQuiz) return;
 
     let targetId = resolveEvalId(created);
-    const resolvedCourseId = Number(created?.id_cours ?? courseId ?? 0);
+    const resolvedCourseId = Number(createdObj.id_cours ?? courseId ?? 0);
 
     if (!targetId && resolvedCourseId > 0) {
-      const evals = await getCourseEvaluations(resolvedCourseId).catch(() => []);
+      const evals = (await getCourseEvaluations(resolvedCourseId).catch(() => [])) as Array<
+        Evaluation & { type_evaluation?: string }
+      >;
       const list = Array.isArray(evals) ? evals : [];
       const matching =
-        [...list].reverse().find((ev: any) => ev?.titre === created?.titre) ||
-        [...list].reverse().find((ev: any) => ev?.type_evaluation === 'quiz') ||
+        [...list].reverse().find((ev) => ev?.titre === createdObj.titre) ||
+        [...list].reverse().find((ev) => ev?.type_evaluation === 'quiz') ||
         list[list.length - 1];
       targetId = resolveEvalId(matching);
     }
 
     if (targetId) {
       await openQuizBuilderForEvaluation({
-        ...(typeof created === 'object' && created !== null ? created : {}),
+        ...createdObj,
         id_evaluation: targetId,
         id_cours: resolvedCourseId,
-        titre: created?.titre || 'Quiz',
-        bareme: Number(created?.bareme) || 20,
+        titre: createdObj.titre || 'Quiz',
+        bareme: Number(createdObj.bareme) || 20,
       } as Evaluation);
     }
   };
@@ -434,7 +457,9 @@ export default function TeacherDashboard() {
         <EvaluationsTab courses={courses} courseStats={courseStats} onGraded={fetchData} />
       )}
 
-      {activeTab === 'suivi' && <ClassTrackingTab courses={courses} courseStats={courseStats} />}
+      {activeTab === 'suivi' && (
+        <SafeClassTrackingTab courses={courses} courseStats={courseStats} />
+      )}
 
       {selectedCourseForModules && (
         <ModuleManagerModal

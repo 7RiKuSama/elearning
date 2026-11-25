@@ -20,7 +20,7 @@ func (r *UserRepository) CreateUser(ctx context.Context, u *models.Utilisateur) 
 			nom, prenom, email, mot_de_passe, role, statut_actif, date_inscription,
 			avatar_url, bio, notif_evaluations, notif_submissions, notif_grades, notif_forum
 		)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+		VALUES ($1, $2, $3, $4, $5::user_role, $6, $7, $8, $9, $10, $11, $12, $13)
 		RETURNING id_user`
 
 	err := r.db.QueryRowContext(ctx, query,
@@ -239,7 +239,7 @@ func (r *UserRepository) UpdateUserStatus(ctx context.Context, userID string, ac
 }
 
 func (r *UserRepository) UpdateUserRole(ctx context.Context, userID string, role string) error {
-	query := `UPDATE utilisateurs SET role = $1 WHERE id_user = $2`
+	query := `UPDATE utilisateurs SET role = $1::user_role WHERE id_user = $2`
 	_, err := r.db.ExecContext(ctx, query, role, userID)
 	return err
 }

@@ -1,5 +1,5 @@
 // File: src/pages/teacher/CoursesTab.tsx
-import React, { useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import type { Cours } from '../../types';
 import type { TeacherCourseStats } from './teacherDashboard.types';

@@ -1,5 +1,5 @@
 // File: src/App.tsx
-import React, { useEffect } from 'react';
+import { useEffect } from 'react';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
 import { ToastProvider } from './context/ToastContext';
@@ -37,18 +37,18 @@ export function App() {
                 <Route path="/login" element={<Login />} />
                 <Route path="/register" element={<Register />} />
 
-                <Route element={<ProtectedRoute allowedRoles={['etudiant', 'enseignant', 'admin']} />}>
+                <Route element={<ProtectedRoute allowedRoles={['ETUDIANT', 'ENSEIGNANT', 'ADMIN']} />}>
                   <Route path="/student/dashboard" element={<StudentDashboard />} />
                   <Route path="/student/notes" element={<StudentGrades />} />
                   <Route path="/cours/:id" element={<CourseDetail />} />
                   <Route path="/profil" element={<ProfileSettings />} />
                 </Route>
 
-                <Route element={<ProtectedRoute allowedRoles={['enseignant', 'admin']} />}>
+                <Route element={<ProtectedRoute allowedRoles={['ENSEIGNANT', 'ADMIN']} />}>
                   <Route path="/teacher/dashboard" element={<TeacherDashboard />} />
                 </Route>
 
-                <Route element={<ProtectedRoute allowedRoles={['admin']} />}>
+                <Route element={<ProtectedRoute allowedRoles={['ADMIN']} />}>
                   <Route path="/admin/dashboard" element={<AdminDashboard />} />
                 </Route>
               </Routes>

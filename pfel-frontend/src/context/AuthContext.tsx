@@ -1,7 +1,13 @@
 // File: src/context/AuthContext.tsx
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import type { Utilisateur, Role, LoginRequest } from '../types';
+import type { Utilisateur, Role } from '../types';
 import { login as apiLogin, getProfile } from '../api/services';
+
+export interface LoginRequest {
+  email: string;
+  mot_de_passe?: string;
+  password?: string;
+}
 
 interface AuthContextType {
   token: string | null;
@@ -12,12 +18,17 @@ interface AuthContextType {
   logout: () => void;
 }
 
+const normalizeRole = (r?: string | null): Role | null => {
+  if (!r) return null;
+  return r.toUpperCase() as Role;
+};
+
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [token, setToken] = useState<string | null>(localStorage.getItem('token'));
   const [role, setRole] = useState<Role | null>(
-    (localStorage.getItem('role') as Role) || null
+    normalizeRole(localStorage.getItem('role'))
   );
   const [user, setUser] = useState<Utilisateur | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
@@ -27,8 +38,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (token) {
         try {
           const profile = await getProfile();
+          const normalized = normalizeRole(profile.role) ?? normalizeRole(localStorage.getItem('role'));
           setUser(profile);
-          setRole(profile.role);
+          setRole(normalized);
+          if (normalized) {
+            localStorage.setItem('role', normalized);
+          }
         } catch (error) {
           console.error('Failed to fetch user profile:', error);
           logout();
@@ -42,14 +57,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const login = async (credentials: LoginRequest) => {
     const data = await apiLogin(credentials);
+    const normalized = normalizeRole(data.role);
     localStorage.setItem('token', data.token);
-    localStorage.setItem('role', data.role);
+    if (normalized) {
+      localStorage.setItem('role', normalized);
+    }
     setToken(data.token);
-    setRole(data.role);
-    
+    setRole(normalized);
+
     // Fetch profile immediately after login
     const profile = await getProfile();
     setUser(profile);
+    const profileRole = normalizeRole(profile.role) ?? normalized;
+    if (profileRole) {
+      setRole(profileRole);
+      localStorage.setItem('role', profileRole);
+    }
   };
 
   const logout = () => {

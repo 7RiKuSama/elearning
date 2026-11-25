@@ -1,12 +1,15 @@
+// DATABASE_URL=postgres://admin:password123@localhost:5432/pfel_db?sslmode=disable
 // File: cmd/server/main.go
 package main
 
 import (
 	"context"
 	"database/sql"
+	"io/fs"
 	"log"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"pfel-elearning/internal/handlers"
@@ -41,6 +44,53 @@ func adaptCompletionToggle(h *handlers.CompletionHandler) gin.HandlerFunc {
 		req.SetPathValue("id", c.Param("id"))
 		h.ToggleResourceCompletion(c.Writer, req)
 	}
+}
+
+func registerSPA(router *gin.Engine, distDir string) {
+	absDist, err := filepath.Abs(distDir)
+	if err != nil {
+		log.Printf("Warning: invalid frontend dist path %q: %v", distDir, err)
+		return
+	}
+	if info, err := os.Stat(absDist); err != nil || !info.IsDir() {
+		log.Printf("Warning: frontend dist directory not found at %s (API-only mode)", absDist)
+		return
+	}
+
+	distFS := os.DirFS(absDist)
+
+	serveIndex := func(c *gin.Context) {
+		indexBytes, err := fs.ReadFile(distFS, "index.html")
+		if err != nil {
+			c.String(http.StatusInternalServerError, "Failed to load index.html")
+			return
+		}
+		c.Data(http.StatusOK, "text/html; charset=utf-8", indexBytes)
+	}
+
+	router.NoRoute(func(c *gin.Context) {
+		reqPath := c.Request.URL.Path
+
+		if reqPath == "/api" || strings.HasPrefix(reqPath, "/api/") || strings.HasPrefix(reqPath, "/uploads/") {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Endpoint not found"})
+			return
+		}
+
+		cleanPath := strings.TrimPrefix(filepath.Clean(reqPath), "/")
+		if cleanPath == "" || cleanPath == "." {
+			serveIndex(c)
+			return
+		}
+
+		if info, err := fs.Stat(distFS, cleanPath); err == nil && !info.IsDir() {
+			c.FileFromFS(cleanPath, http.FS(distFS))
+			return
+		}
+
+		serveIndex(c)
+	})
+
+	log.Printf("Serving React SPA from %s", absDist)
 }
 
 func main() {
@@ -124,8 +174,21 @@ func main() {
 
 	// CORS
 	allowedOrigins := []string{"http://localhost:5173", "http://localhost:3000"}
-	if envOrigins := os.Getenv("CORS_ORIGINS"); envOrigins != "" {
-		allowedOrigins = strings.Split(envOrigins, ",")
+	rawOrigins := os.Getenv("CORS_ORIGINS")
+	if rawOrigins == "" {
+		rawOrigins = os.Getenv("CORS_ORIGIN")
+	}
+	if rawOrigins != "" {
+		parsed := []string{}
+		for _, origin := range strings.Split(rawOrigins, ",") {
+			trimmed := strings.TrimSpace(origin)
+			if trimmed != "" {
+				parsed = append(parsed, trimmed)
+			}
+		}
+		if len(parsed) > 0 {
+			allowedOrigins = parsed
+		}
 	}
 	router.Use(cors.New(cors.Config{
 		AllowOrigins:     allowedOrigins,
@@ -136,7 +199,10 @@ func main() {
 	}))
 
 	// Static uploads directory
-	uploadsDir := "./uploads"
+	uploadsDir := os.Getenv("UPLOAD_DIR")
+	if uploadsDir == "" {
+		uploadsDir = "./uploads"
+	}
 	if err := os.MkdirAll(uploadsDir, os.ModePerm); err != nil {
 		log.Printf("Warning: could not create uploads directory: %v", err)
 	}
@@ -246,6 +312,12 @@ func main() {
 			protected.GET("/statistiques", adminOnly, statsHandler.GetPlatformStats)
 		}
 	}
+
+	distDir := os.Getenv("FRONTEND_DIST_DIR")
+	if distDir == "" {
+		distDir = "../../pfel-frontend/dist"
+	}
+	registerSPA(router, distDir)
 
 	port := os.Getenv("PORT")
 	if port == "" {

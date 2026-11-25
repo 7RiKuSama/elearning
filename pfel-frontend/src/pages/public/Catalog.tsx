@@ -1,5 +1,5 @@
 // File: src/pages/public/Catalog.tsx
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import gsap from 'gsap';
 import { getCatalog, getCategories, getMyEnrollments, enrollCourse } from '../../api/services';
 import type { Cours, Categorie, Inscription } from '../../types';
@@ -70,7 +70,7 @@ export default function Catalog() {
       });
       setOpenCategories(initialOpen);
 
-      if (token && (role === 'etudiant' || role === 'ETUDIANT')) {
+      if (token && role === 'ETUDIANT') {
         const enrollments = await getMyEnrollments();
         const ids = new Set((enrollments || []).map((e: Inscription) => e.id_cours));
         setEnrolledIds(ids);
@@ -391,10 +391,10 @@ export default function Catalog() {
           </div>
           <div>
             <p className="text-lg font-semibold text-[var(--text-primary)] tabular-nums leading-tight">
-              {token && (role === 'etudiant' || role === 'ETUDIANT') ? enrolledIds.size : '100%'}
+              {token && role === 'ETUDIANT' ? enrolledIds.size : '100%'}
             </p>
             <p className="text-xs text-[var(--text-muted)]">
-              {token && (role === 'etudiant' || role === 'ETUDIANT')
+              {token && role === 'ETUDIANT'
                 ? 'Tes missions en cours'
                 : 'Pratique & fun'}
             </p>
@@ -564,7 +564,7 @@ export default function Catalog() {
                                   </div>
                                 </div>
 
-                                {token && (role === 'etudiant' || role === 'ETUDIANT') && (
+                                {token && role === 'ETUDIANT' && (
                                   <div className="px-4 pb-4 pt-1">
                                     {isEnrolled ? (
                                       <Link

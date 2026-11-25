@@ -278,7 +278,7 @@ export const Navbar: React.FC = () => {
                 )}
               </div>
 
-              {user && role === 'etudiant' && (
+              {user && role === 'ETUDIANT' && (
                 <Link
                   to="/student/dashboard"
                   className={navLinkClass(pathname === '/student/dashboard')}
@@ -287,7 +287,7 @@ export const Navbar: React.FC = () => {
                 </Link>
               )}
 
-              {user && role === 'enseignant' && (
+              {user && role === 'ENSEIGNANT' && (
                 <Link
                   to="/teacher/dashboard"
                   className={navLinkClass(pathname === '/teacher/dashboard')}
@@ -296,7 +296,7 @@ export const Navbar: React.FC = () => {
                 </Link>
               )}
 
-              {user && role === 'admin' && (
+              {user && role === 'ADMIN' && (
                 <Link
                   to="/admin/dashboard"
                   className={navLinkClass(pathname === '/admin/dashboard')}

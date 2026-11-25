@@ -1,7 +1,6 @@
 // File: src/pages/student/course-detail/CourseChaptersSection.tsx
 import React from 'react';
 import type { Ressource } from '../../../types';
-import type { ChapterSection } from './types';
 import { resolveFileUrl } from './mediaUtils';
 import { ResourcePreviewPanel } from './ResourcePreviewPanel';
 import {
@@ -15,6 +14,15 @@ import {
   CompletedBadgeGlyph,
   PendingRingGlyph,
 } from '../../../components/ui/CourseGlyphs';
+
+export interface ChapterSection {
+  key: string;
+  orderLabel?: string;
+  title: string;
+  description?: string;
+  isUnassigned?: boolean;
+  items: Ressource[];
+}
 
 interface CourseChaptersSectionProps {
   chapterSections: ChapterSection[];
@@ -110,7 +118,7 @@ export const CourseChaptersSection: React.FC<CourseChaptersSectionProps> = ({
         <div className="space-y-4">
           {chapterSections.map((section) => {
             const isCollapsed = Boolean(collapsedChapters[section.key]);
-            const chapDone = section.items.filter((r) =>
+            const chapDone = section.items.filter((r: Ressource) =>
               completedResourceSet.has(r.id_ressource)
             ).length;
             const chapTotal = section.items.length;
@@ -172,7 +180,7 @@ export const CourseChaptersSection: React.FC<CourseChaptersSectionProps> = ({
                         Aucun support déposé dans ce chapitre pour le moment.
                       </p>
                     ) : (
-                      section.items.map((res) => {
+                      section.items.map((res: Ressource) => {
                         const isExpanded = expandedResId === res.id_ressource;
                         const fileUrl = resolveFileUrl(res.chemin_fichier);
                         const isDone = completedResourceSet.has(res.id_ressource);

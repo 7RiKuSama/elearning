@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strings"
 	"time"
+	"log"
 
 	"github.com/gin-gonic/gin"
 	"pfel-elearning/internal/models"
@@ -122,7 +123,12 @@ func (h *AuthHandler) Register(c *gin.Context) {
 	}
 
 	if err := h.UserRepo.CreateUser(c.Request.Context(), user); err != nil {
-		c.JSON(http.StatusConflict, gin.H{"error": "Failed to create user (email might already exist)"})
+		log.Printf("CreateUser failed: %v", err)
+		if strings.Contains(strings.ToLower(err.Error()), "duplicate key") || strings.Contains(err.Error(), "23505") {
+			c.JSON(http.StatusConflict, gin.H{"error": "Email already exists"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create user"})
 		return
 	}
 
